@@ -29,3 +29,17 @@ matplotlib==3.8.2
 
 # Development / testing
 pytest==7.4.4
+
+# =============================================================================
+# OPTIONAL DEPENDENCIES
+# =============================================================================
+# Uncomment the following to enable additional features:
+
+# OR-Tools for constraint programming and MIP baselines
+# ortools>=9.7.0
+
+# Gurobi for high-performance MIP solving (requires license)
+# gurobipy>=10.0.0
+
+# Optuna for hyperparameter optimization (alternative to Ray Tune)
+# optuna>=3.5.0
