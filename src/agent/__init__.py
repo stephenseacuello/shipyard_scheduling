@@ -11,6 +11,7 @@ from .policy import ActorCriticPolicy
 from .ppo import PPOTrainer, RunningMeanStd
 from .curriculum import CurriculumScheduler, AdaptiveCurriculum, create_curriculum
 from .dqn import DoubleDQNAgent, DuelingDQN, PrioritizedReplayBuffer
+from .mo_ppo import MultiObjectivePPO, ParetoArchive, HyperNetwork
 
 __all__ = [
     # Encoders
@@ -24,6 +25,10 @@ __all__ = [
     # PPO
     "PPOTrainer",
     "RunningMeanStd",
+    # Multi-Objective PPO
+    "MultiObjectivePPO",
+    "ParetoArchive",
+    "HyperNetwork",
     # DQN
     "DoubleDQNAgent",
     "DuelingDQN",
