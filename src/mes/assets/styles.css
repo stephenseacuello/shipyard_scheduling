@@ -1,0 +1,423 @@
+/* Shipyard MES Dashboard — Design System */
+
+:root {
+    --primary: #2c3e50;
+    --primary-light: #34495e;
+    --accent: #3498db;
+    --success: #27ae60;
+    --warning: #f39c12;
+    --danger: #e74c3c;
+    --bg: #f0f2f5;
+    --card-bg: #ffffff;
+    --text: #2c3e50;
+    --text-muted: #7f8c8d;
+    --border: #e1e4e8;
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --space-xl: 32px;
+    --radius: 8px;
+    --shadow: 0 2px 8px rgba(0,0,0,0.08);
+    --shadow-hover: 0 4px 16px rgba(0,0,0,0.12);
+}
+
+* { box-sizing: border-box; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+/* App container */
+.app-container {
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: var(--space-lg);
+}
+
+/* Header */
+.app-header {
+    margin-bottom: var(--space-lg);
+}
+.app-header h1 {
+    color: var(--primary);
+    font-size: 24px;
+    font-weight: 700;
+    margin: 0 0 var(--space-xs) 0;
+}
+.app-header .subtitle {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin: 0;
+}
+
+/* Control bar */
+.control-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-sm) var(--space-md);
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: var(--space-md);
+    flex-wrap: wrap;
+}
+.control-bar label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+/* Tabs */
+.custom-tabs .tab {
+    border: none !important;
+    border-bottom: 3px solid transparent !important;
+    background: transparent !important;
+    padding: 12px 20px !important;
+    font-weight: 500;
+    color: var(--text-muted);
+    font-size: 14px;
+}
+.custom-tabs .tab--selected {
+    border-bottom-color: var(--accent) !important;
+    color: var(--primary) !important;
+    font-weight: 600;
+}
+.custom-tabs {
+    border-bottom: 2px solid var(--border) !important;
+}
+
+/* Tab content */
+.tab-content {
+    padding: var(--space-lg) 0;
+}
+
+/* KPI cards grid */
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: var(--space-md);
+    margin-bottom: var(--space-lg);
+}
+.kpi-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--space-md) var(--space-lg);
+    text-align: center;
+    transition: box-shadow 0.2s, transform 0.2s;
+    box-shadow: var(--shadow);
+}
+.kpi-card:hover {
+    box-shadow: var(--shadow-hover);
+    transform: translateY(-2px);
+}
+.kpi-card-label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin: 0 0 var(--space-sm) 0;
+}
+.kpi-card-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--primary);
+    margin: 0;
+}
+
+/* Section headers */
+.section-header {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--primary);
+    margin: var(--space-lg) 0 var(--space-md) 0;
+    padding-bottom: var(--space-sm);
+    border-bottom: 2px solid var(--border);
+}
+
+/* Chart containers */
+.chart-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--space-md);
+    margin-bottom: var(--space-lg);
+    box-shadow: var(--shadow);
+}
+
+/* Tables */
+.dash-table-container {
+    margin-top: var(--space-sm);
+    margin-bottom: var(--space-lg);
+}
+.dash-spreadsheet-container .dash-spreadsheet-inner td {
+    padding: 10px 12px !important;
+    font-size: 13px !important;
+}
+.dash-spreadsheet-container .dash-spreadsheet-inner th {
+    padding: 10px 12px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    background-color: #f8f9fa !important;
+    border-bottom: 2px solid var(--border) !important;
+}
+.dash-spreadsheet-container .dash-spreadsheet-inner tr:nth-child(even) td {
+    background-color: #fafbfc !important;
+}
+
+/* Two-column layout */
+.two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-lg);
+}
+@media (max-width: 900px) {
+    .two-col {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Status badges */
+.badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+/* Empty state */
+.empty-state {
+    text-align: center;
+    padding: var(--space-xl) var(--space-lg);
+    color: var(--text-muted);
+}
+.empty-state p {
+    font-size: 15px;
+    margin: var(--space-sm) 0;
+}
+
+/* Footer */
+.app-footer {
+    text-align: center;
+    padding: var(--space-lg) 0;
+    color: var(--text-muted);
+    font-size: 12px;
+    border-top: 1px solid var(--border);
+    margin-top: var(--space-xl);
+}
+
+/* Loading spinner override */
+._dash-loading {
+    min-height: 100px;
+}
+
+/* ============================================================================
+   DUAL SHIPYARD MAP STYLES
+   ============================================================================ */
+
+/* Map container */
+.map-container {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--space-md);
+    margin-bottom: var(--space-lg);
+}
+
+/* Map controls bar */
+.map-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--space-lg);
+    padding: var(--space-sm) var(--space-md);
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: var(--space-md);
+    flex-wrap: wrap;
+}
+
+.map-controls label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+/* Detail panel for map clicks */
+.detail-panel {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--space-md);
+    min-height: 80px;
+    margin-top: var(--space-md);
+}
+
+.detail-panel .text-muted {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* Dual map container */
+.dual-map-container {
+    margin-bottom: var(--space-lg);
+}
+
+/* ============================================================================
+   ALERTS BANNER STYLES
+   ============================================================================ */
+
+.alerts-banner {
+    margin-bottom: var(--space-md);
+}
+
+.alerts-banner:empty {
+    display: none;
+}
+
+.alert {
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius);
+    margin-bottom: var(--space-xs);
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.alert strong {
+    font-weight: 700;
+}
+
+.alert-warning {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    color: #856404;
+}
+
+.alert-danger {
+    background: #f8d7da;
+    border: 1px solid #dc3545;
+    color: #721c24;
+}
+
+.alert-info {
+    background: #d1ecf1;
+    border: 1px solid #17a2b8;
+    color: #0c5460;
+}
+
+.alert-success {
+    background: #d4edda;
+    border: 1px solid #28a745;
+    color: #155724;
+}
+
+/* ============================================================================
+   PLAYBACK CONTROLS STYLES
+   ============================================================================ */
+
+.playback-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-sm) var(--space-md);
+    background: #f8f9fa;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: var(--space-md);
+}
+
+.playback-btn {
+    padding: 4px 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: white;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background 0.2s;
+}
+
+.playback-btn:hover {
+    background: #f0f2f5;
+}
+
+.playback-btn:active {
+    background: #e1e4e8;
+}
+
+.playback-btn.playing {
+    background: #e74c3c;
+    color: white;
+    border-color: #c0392b;
+}
+
+.playback-slider {
+    flex: 1;
+    min-width: 200px;
+}
+
+/* Playback mode indicator */
+.playback-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #856404;
+}
+
+.playback-indicator.live {
+    background: #d4edda;
+    border-color: #28a745;
+    color: #155724;
+}
+
+/* Hide playback controls by default */
+#playback-controls-container {
+    display: none;
+    margin-bottom: var(--space-md);
+}
+
+/* ============================================================================
+   RESPONSIVE ADJUSTMENTS
+   ============================================================================ */
+
+@media (max-width: 1200px) {
+    .dual-map-container {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .map-controls {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .playback-controls {
+        flex-wrap: wrap;
+    }
+
+    .playback-slider {
+        width: 100%;
+        order: 10;
+        margin-top: var(--space-sm);
+    }
+}

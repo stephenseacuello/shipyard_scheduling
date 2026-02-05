@@ -1,0 +1,162 @@
+"""Entity classes for the shipyard simulation.
+
+This module defines data structures for blocks, SPMTs (Self‑Propelled
+Modular Transporters) and cranes. Entities carry state information such
+as their current location, status, health levels and processing history.
+Enumerations encode possible statuses and production stages.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import List, Optional, Tuple
+
+import numpy as np
+
+
+class BlockStatus(Enum):
+    WAITING = "waiting"
+    IN_PROCESS = "in_process"
+    IN_TRANSIT = "in_transit"
+    AT_STAGING = "at_staging"
+    AT_PRE_ERECTION = "at_pre_erection"
+    PLACED_ON_DOCK = "placed_on_dock"
+
+
+class ProductionStage(Enum):
+    CUTTING = 0
+    PANEL = 1
+    ASSEMBLY = 2
+    OUTFITTING = 3
+    PAINTING = 4
+    PRE_ERECTION = 5
+    DOCK = 6
+
+
+@dataclass
+class Block:
+    """Representation of a ship block.
+
+    Parameters
+    ----------
+    id : str
+        Unique identifier for the block.
+    weight : float
+        Weight in tons; affects SPMT degradation.
+    size : Tuple[float, float]
+        Length and width in meters.
+    due_date : float
+        Target completion time (simulation units).
+    current_stage : ProductionStage, optional
+        The stage the block is currently in. Defaults to `CUTTING`.
+    status : BlockStatus, optional
+        High‑level status flag.
+    location : str, optional
+        Name of the node where the block currently resides.
+    predecessors : list of str, optional
+        Blocks that must be placed on the dock before this block.
+    dock_position : Optional[Tuple[int, int]], optional
+        Target row/column on the dock. Assigned when scheduling.
+    """
+
+    id: str
+    weight: float
+    size: Tuple[float, float]
+    due_date: float
+    current_stage: ProductionStage = ProductionStage.CUTTING
+    status: BlockStatus = BlockStatus.WAITING
+    location: str = "cutting_queue"
+    completion_pct: float = 0.0
+    predecessors: List[str] = field(default_factory=list)
+    dock_position: Optional[Tuple[int, int]] = None
+    stage_entry_time: float = 0.0
+    history: List[dict] = field(default_factory=list)
+
+    def log_event(self, timestamp: float, description: str) -> None:
+        """Append an event to the block's history."""
+        self.history.append({"time": timestamp, "desc": description})
+
+
+class SPMTStatus(Enum):
+    IDLE = "idle"
+    TRAVELING_EMPTY = "traveling_empty"
+    TRAVELING_LOADED = "traveling_loaded"
+    LOADING = "loading"
+    UNLOADING = "unloading"
+    IN_MAINTENANCE = "in_maintenance"
+    BROKEN_DOWN = "broken_down"
+
+
+@dataclass
+class SPMT:
+    """Self‑propelled modular transporter.
+
+    SPMTs carry blocks between facilities. They degrade over time and may
+    require maintenance. Health indicators are expressed on a 0–100 scale.
+    """
+
+    id: str
+    capacity: float = 500.0
+    current_location: str = "yard_depot"
+    status: SPMTStatus = SPMTStatus.IDLE
+    current_load: Optional[str] = None
+    health_hydraulic: float = 100.0
+    health_tires: float = 100.0
+    health_engine: float = 100.0
+    base_degradation_rate: float = 0.01  # per hour
+    load_degradation_factor: float = 0.5
+    cumulative_operating_hours: float = 0.0
+    cumulative_load_ton_hours: float = 0.0
+    last_maintenance_time: float = 0.0
+
+    def get_health_vector(self) -> np.ndarray:
+        return np.array([
+            self.health_hydraulic / 100.0,
+            self.health_tires / 100.0,
+            self.health_engine / 100.0,
+        ], dtype=float)
+
+    def get_min_health(self) -> float:
+        return float(min(self.health_hydraulic, self.health_tires, self.health_engine))
+
+    def estimate_rul(self, degradation_model: "WienerDegradationModel") -> float:
+        """Estimate remaining useful life using a degradation model.
+
+        This method passes the current health of the worst component to
+        the provided `degradation_model` and returns the estimated time
+        until failure under a nominal load ratio of 0.3.
+        """
+        min_health = self.get_min_health()
+        return float(degradation_model.estimate_rul(min_health, load_ratio=0.3))
+
+
+class CraneStatus(Enum):
+    IDLE = "idle"
+    LIFTING = "lifting"
+    POSITIONING = "positioning"
+    IN_MAINTENANCE = "in_maintenance"
+    BROKEN_DOWN = "broken_down"
+
+
+@dataclass
+class Crane:
+    """Gantry crane representation."""
+
+    id: str
+    position_on_rail: float = 0.0  # metres along the rail
+    status: CraneStatus = CraneStatus.IDLE
+    current_block: Optional[str] = None
+    health_cable: float = 100.0
+    health_motor: float = 100.0
+    lift_capacity: float = 800.0
+    travel_speed: float = 0.5  # m/s along the rail
+
+    def get_health_vector(self) -> np.ndarray:
+        return np.array([
+            self.health_cable / 100.0,
+            self.health_motor / 100.0,
+        ], dtype=float)
+
+    def get_min_health(self) -> float:
+        return float(min(self.health_cable, self.health_motor))

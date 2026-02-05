@@ -1,0 +1,31 @@
+# Core simulation dependencies
+gymnasium==0.29.1
+simpy==4.1.1
+networkx==3.2.1
+numpy==1.26.4
+pandas==2.2.0
+pyyaml==6.0.1
+
+# Dashboard / visualization
+dash==2.14.2
+dash-cytoscape>=0.3.0
+plotly==5.18.0
+flask==3.0.0
+
+# RL stack
+torch==2.1.2
+
+# Experiment tracking & distributed training
+wandb>=0.16.0
+ray[tune]>=2.9.0
+
+# Graph RL (PyTorch Geometric)
+torch-geometric==2.4.0
+
+# Statistical analysis (for publication-quality results)
+scipy==1.12.0
+seaborn==0.13.2
+matplotlib==3.8.2
+
+# Development / testing
+pytest==7.4.4

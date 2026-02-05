@@ -1,0 +1,8 @@
+# Medium instance configuration (150 blocks, 9 SPMTs)
+
+inherit_from: default.yaml
+
+n_blocks: 150
+n_spmts: 9
+n_cranes: 3
+max_time: 15000

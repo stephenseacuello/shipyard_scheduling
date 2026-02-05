@@ -1,0 +1,195 @@
+# Electric Boat Dual-Yard Configuration
+# Models Quonset Point (RI) -> Groton (CT) submarine manufacturing workflow
+
+log_dir: /Users/stepheneacuello/Projects/shipyard_scheduling/logs/
+checkpoint_dir: /Users/stepheneacuello/Projects/shipyard_scheduling/data/checkpoints/
+
+# Submarine configuration
+submarine:
+  class: "generic"  # Options: "generic", "virginia", "columbia"
+  modules_per_sub: 4
+  super_modules_per_sub: 2
+
+# Quonset Point, RI - Module Fabrication & Outfitting (400 acres)
+quonset:
+  facilities:
+    - name: steel_processing
+      processing_time_mean: 16.0  # hours
+      processing_time_std: 4.0
+      capacity: 4
+      description: "Automated Steel Processing Facility - cutting, machining, bending"
+
+    - name: afc_facility
+      processing_time_mean: 24.0
+      processing_time_std: 6.0
+      capacity: 4
+      description: "Automated Frame & Cylinder - vertical hull cylinder construction"
+      cranes: [60, 60, 35, 35]  # crane capacities in tons
+
+    - name: bldg_9a
+      processing_time_mean: 20.0
+      processing_time_std: 5.0
+      capacity: 2
+      description: "Building 9A - Module outfitting (4 acres)"
+
+    - name: bldg_9b
+      processing_time_mean: 20.0
+      processing_time_std: 5.0
+      capacity: 2
+      description: "Building 9B - Module outfitting (4 acres)"
+
+    - name: bldg_9c
+      processing_time_mean: 20.0
+      processing_time_std: 5.0
+      capacity: 2
+      description: "Building 9C - Module outfitting (5 acres)"
+
+    - name: super_module_assembly
+      processing_time_mean: 30.0
+      processing_time_std: 8.0
+      capacity: 3
+      description: "Super module assembly - join modules, rotate horizontal"
+
+    - name: quonset_pier
+      processing_time_mean: 4.0
+      processing_time_std: 1.0
+      capacity: 2
+      description: "Narragansett Bay pier - barge loading"
+
+  staging_areas:
+    - name: quonset_wip1
+      capacity: 10
+    - name: quonset_wip2
+      capacity: 10
+
+  dock_grid:
+    rows: 0  # Quonset doesn't have final dock assembly
+    cols: 0
+
+  transport_network:
+    steel_processing: {afc_facility: 0.5}
+    afc_facility: {bldg_9a: 0.5, bldg_9b: 0.5, bldg_9c: 0.5}
+    bldg_9a: {super_module_assembly: 1.0}
+    bldg_9b: {super_module_assembly: 1.0}
+    bldg_9c: {super_module_assembly: 1.0}
+    super_module_assembly: {quonset_pier: 1.5}
+    quonset_wip1: {steel_processing: 0.5}
+    quonset_wip2: {afc_facility: 0.5}
+
+  n_spmts: 4
+  n_cranes: 6  # AFC facility overhead cranes
+
+# Groton, CT - Final Assembly & Launch (118 acres)
+groton:
+  facilities:
+    - name: groton_pier
+      processing_time_mean: 4.0
+      processing_time_std: 1.0
+      capacity: 2
+      description: "Thames River pier - barge unloading"
+
+    - name: land_level_construction
+      processing_time_mean: 40.0
+      processing_time_std: 10.0
+      capacity: 2
+      description: "Land Level Ship Construction Facility - join super modules"
+
+    - name: building_600
+      processing_time_mean: 60.0
+      processing_time_std: 15.0
+      capacity: 1
+      description: "South Yard Assembly Building (200,000 sq ft) - systems integration"
+      cranes: [170, 170, 170, 170, 170]  # 5x 170-ton gantry cranes
+
+    - name: graving_dock
+      processing_time_mean: 20.0
+      processing_time_std: 5.0
+      capacity: 1
+      description: "Graving dock with pontoon - float-off launch"
+
+    - name: dry_dock_1
+      processing_time_mean: 0.0  # maintenance only
+      processing_time_std: 0.0
+      capacity: 1
+      description: "Dry dock 1 - active sub maintenance"
+
+    - name: dry_dock_2
+      processing_time_mean: 0.0  # maintenance only
+      processing_time_std: 0.0
+      capacity: 1
+      description: "Dry dock 2 - active sub maintenance"
+
+  staging_areas:
+    - name: groton_staging
+      capacity: 5
+
+  dock_grid:
+    rows: 1  # Final assembly positions
+    cols: 3
+
+  transport_network:
+    groton_pier: {land_level_construction: 1.0, groton_staging: 0.5}
+    land_level_construction: {building_600: 2.0}
+    building_600: {graving_dock: 1.5}
+    groton_staging: {land_level_construction: 0.5}
+
+  n_spmts: 4
+  n_cranes: 5  # 170-ton gantry cranes
+
+# Barge transport configuration (Holland barge, 400'x100')
+transport:
+  barge_id: "Holland"
+  barge_capacity: 2  # super modules per trip
+  origin_pier: quonset_pier
+  destination_pier: groton_pier
+  transit_time_hours: 36.0  # Narragansett Bay -> Thames River
+  return_time_hours: 30.0   # Return trip (empty, faster)
+  loading_time_hours: 4.0
+  unloading_time_hours: 4.0
+
+# Entity counts
+n_submarines: 2  # Concurrent submarines in production
+n_super_modules: 8  # Total super modules across all subs
+
+# Reward weights (same structure as default)
+reward_tardy: 10.0
+reward_empty_travel: 0.1
+reward_breakdown: 100.0
+reward_maintenance: 5.0
+reward_completion: 1.0
+reward_barge_delay: 50.0  # New: penalty for barge delays
+
+# Cost weights
+cost_weight_tardiness: 10.0
+cost_weight_breakdown: 100.0
+cost_weight_maintenance: 5.0
+cost_weight_empty_travel: 1.0
+cost_weight_barge_wait: 20.0  # New: cost of barge waiting
+
+max_time: 10000  # Extended for dual-yard operations
+
+# Degradation model (same as default)
+degradation:
+  base_drift: 0.05
+  load_drift_factor: 0.1
+  volatility: 0.02
+  failure_threshold: 20.0
+
+# PPO hyperparameters (same as default)
+ppo:
+  lr: 3e-4
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_epsilon: 0.2
+  entropy_coef: 0.01
+  value_coef: 0.5
+  max_grad_norm: 0.5
+  n_epochs: 4
+  batch_size: 64
+
+# Curriculum learning milestones (adjusted for dual-yard)
+curriculum:
+  milestones:
+    0: {n_super_modules: 4, max_time: 5000}
+    5: {n_super_modules: 6, max_time: 7500}
+    10: {n_super_modules: 8, max_time: 10000}

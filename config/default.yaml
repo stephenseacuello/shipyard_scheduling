@@ -1,0 +1,90 @@
+log_dir: /Users/stepheneacuello/Projects/shipyard_scheduling/logs/
+checkpoint_dir: /Users/stepheneacuello/Projects/shipyard_scheduling/data/checkpoints/
+
+
+# Default configuration for the shipyard scheduling environment
+
+shipyard:
+  facilities:
+    - name: cutting
+      processing_time_mean: 8.0
+      processing_time_std: 2.0
+      capacity: 2
+    - name: panel
+      processing_time_mean: 6.0
+      processing_time_std: 1.5
+      capacity: 2
+    - name: assembly
+      processing_time_mean: 10.0
+      processing_time_std: 3.0
+      capacity: 2
+    - name: outfitting
+      processing_time_mean: 12.0
+      processing_time_std: 4.0
+      capacity: 2
+    - name: paint
+      processing_time_mean: 8.0
+      processing_time_std: 2.0
+      capacity: 2
+  staging_areas:
+    - name: wip1
+      capacity: 10
+    - name: wip2
+      capacity: 10
+  dock_grid:
+    rows: 4
+    cols: 8
+  transport_network:
+    # fully connected network with unit travel times; actual layout defined in shipyard.py
+    cutting: {panel: 1.0, assembly: 2.0}
+    panel: {assembly: 1.0, outfitting: 2.0}
+    assembly: {outfitting: 1.0, paint: 2.0}
+    outfitting: {paint: 1.0}
+    paint: {}
+    wip1: {cutting: 1.0}
+    wip2: {panel: 1.0}
+
+n_blocks: 50
+n_spmts: 6
+n_cranes: 2
+
+# Reward weights (used in environment step function)
+reward_tardy: 10.0
+reward_empty_travel: 0.1
+reward_breakdown: 100.0
+reward_maintenance: 5.0
+reward_completion: 1.0
+
+# Cost weights (used in KPI computation for total cost metric)
+cost_weight_tardiness: 10.0
+cost_weight_breakdown: 100.0
+cost_weight_maintenance: 5.0
+cost_weight_empty_travel: 1.0
+
+max_time: 5000  # maximum simulation time steps before truncation
+
+# Degradation model
+degradation:
+  base_drift: 0.05
+  load_drift_factor: 0.1
+  volatility: 0.02
+  failure_threshold: 20.0
+
+# PPO hyperparameters
+ppo:
+  lr: 3e-4
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_epsilon: 0.2
+  entropy_coef: 0.01
+  value_coef: 0.5
+  max_grad_norm: 0.5
+  n_epochs: 4
+  batch_size: 64
+
+# Curriculum learning milestones
+curriculum:
+  milestones:
+    0: {n_blocks: 20, max_time: 2000}
+    5: {n_blocks: 35, max_time: 3500}
+    10: {n_blocks: 50, max_time: 5000}

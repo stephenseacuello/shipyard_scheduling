@@ -1,0 +1,3 @@
+epoch,policy_loss,value_loss,entropy,throughput,average_tardiness,unplanned_breakdown_rate,planned_maintenance_rate,spmt_utilization,crane_utilization,oee,schedule_variance,total_cost
+1,1.4133756384253502,0.12754653580486774,1.5333349406719208,0.01,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2,0.11700911825755611,0.011365742946509272,0.13739503535907716,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0

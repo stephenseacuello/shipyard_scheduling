@@ -1,0 +1,8 @@
+# Large instance configuration (300 blocks, 12 SPMTs)
+
+inherit_from: default.yaml
+
+n_blocks: 300
+n_spmts: 12
+n_cranes: 4
+max_time: 30000

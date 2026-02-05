@@ -1,0 +1,80 @@
+# Virtual environment
+shipyard/
+venv/
+.venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Database
+*.db
+*.sqlite3
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Distribution
+*.tar.gz
+*.zip
+
+# Logs
+*.log
+logs/
+
+# Ray results (can be large)
+ray_results/
+
+# wandb local files
+wandb/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# LaTeX auxiliary files
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.fdb_latexmk
+paper/*.fls
+paper/*.synctex.gz
+paper/*.out
+
+# Model checkpoints (optional - uncomment if you want to exclude)
+# checkpoints/
+# *.pt
+# *.pth

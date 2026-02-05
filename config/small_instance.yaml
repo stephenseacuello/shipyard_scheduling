@@ -1,0 +1,9 @@
+# Small instance configuration (50 blocks, 6 SPMTs)
+
+inherit_from: default.yaml
+
+# Override specific fields
+n_blocks: 50
+n_spmts: 6
+n_cranes: 2
+max_time: 5000
