@@ -79,3 +79,6 @@ checkpoints/
 data/checkpoints/
 *.pt
 *.pth
+
+# Experiment results (regeneratable)
+results/
