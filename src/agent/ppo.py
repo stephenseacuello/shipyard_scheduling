@@ -27,6 +27,8 @@ from .action_masking import (
     batch_masks,
     to_torch_mask,
 )
+from .entropy_tuning import EntropyTuner
+from .reward_shaping import PotentialBasedRewardShaper
 
 
 class RunningMeanStd:
@@ -91,7 +93,7 @@ class PPOTrainer:
         gamma: Discount factor.
         gae_lambda: GAE lambda parameter.
         clip_epsilon: PPO clipping parameter.
-        entropy_coef: Entropy bonus coefficient.
+        entropy_coef: Entropy bonus coefficient (initial value if using schedule).
         value_coef: Value loss coefficient.
         max_grad_norm: Gradient clipping threshold.
         n_epochs: Number of PPO update epochs per rollout.
@@ -101,6 +103,8 @@ class PPOTrainer:
         target_kl: Target KL divergence for early stopping (None to disable).
         normalize_returns: Whether to normalize returns.
         lr_schedule: Learning rate schedule type ('constant', 'cosine', 'linear').
+        entropy_schedule: Entropy annealing schedule ('constant', 'linear', 'exponential', 'cosine').
+        entropy_coef_final: Final entropy coefficient (defaults to 2% of initial).
     """
 
     def __init__(
@@ -121,6 +125,12 @@ class PPOTrainer:
         target_kl: Optional[float] = 0.015,
         normalize_returns: bool = True,
         lr_schedule: str = "cosine",
+        entropy_schedule: str = "cosine",
+        entropy_coef_final: Optional[float] = None,
+        use_adaptive_entropy: bool = False,
+        encoder_lr_scale: float = 0.1,
+        use_reward_shaping: bool = False,
+        reward_shaping_weight: float = 0.2,
     ) -> None:
         self.policy = policy.to(device)
         self.encoder = encoder.to(device)
@@ -130,12 +140,14 @@ class PPOTrainer:
         self.current_epoch = 0
         self.lr_schedule = lr_schedule
 
-        self.optimizer = torch.optim.Adam(
-            list(self.policy.parameters()) + list(self.encoder.parameters()),
-            lr=lr,
-        )
+        # Differential learning rates: encoder learns slower for stable representations
+        # Phase 3B: encoder_lr = lr * 0.1 to prevent representation drift
+        self.optimizer = torch.optim.Adam([
+            {"params": self.encoder.parameters(), "lr": lr * encoder_lr_scale},
+            {"params": self.policy.parameters(), "lr": lr},
+        ], weight_decay=1e-5)
 
-        # Learning rate scheduler
+        # Learning rate scheduler (applied to both param groups)
         if lr_schedule == "cosine":
             self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
                 self.optimizer, T_max=total_epochs, eta_min=lr * 0.01
@@ -150,13 +162,18 @@ class PPOTrainer:
         self.gamma = gamma
         self.gae_lambda = gae_lambda
         self.clip_epsilon = clip_epsilon
-        self.entropy_coef = entropy_coef
         self.value_coef = value_coef
         self.max_grad_norm = max_grad_norm
         self.n_epochs = n_epochs
         self.batch_size = batch_size
         self.target_kl = target_kl
         self.normalize_returns = normalize_returns
+
+        # Entropy annealing parameters
+        self.entropy_coef_initial = entropy_coef
+        # Use 20% of initial (was 2% - too aggressive, caused entropy collapse in ~6 epochs)
+        self.entropy_coef_final = entropy_coef_final if entropy_coef_final is not None else entropy_coef * 0.2
+        self.entropy_schedule = entropy_schedule
 
         # Return normalizer (running statistics)
         self.return_normalizer = RunningMeanStd() if normalize_returns else None
@@ -179,9 +196,39 @@ class PPOTrainer:
             "explained_variances": [],
         }
 
-    def collect_rollout(self, env, n_steps: int) -> Dict[str, Any]:
-        """Collect `n_steps` interactions from the environment."""
-        obs, info = env.reset()
+        # Adaptive entropy tuning (SAC-style automatic temperature)
+        self.use_adaptive_entropy = use_adaptive_entropy
+        if use_adaptive_entropy:
+            # action_dim = 4 for the action_type head
+            self.entropy_tuner = EntropyTuner(
+                action_dim=policy.n_action_types,
+                device=device,
+                lr=3e-4,
+                target_entropy=None,  # Auto-computed as -log(1/action_dim) * 0.98
+            )
+        else:
+            self.entropy_tuner = None
+
+        # Potential-based reward shaping for denser learning signal
+        self.use_reward_shaping = use_reward_shaping
+        self.reward_shaping_weight = reward_shaping_weight
+        if use_reward_shaping:
+            self.reward_shaper = PotentialBasedRewardShaper(gamma=gamma)
+        else:
+            self.reward_shaper = None
+
+    def collect_rollout(self, env, n_steps: int, reset: bool = True) -> Dict[str, Any]:
+        """Collect `n_steps` interactions from the environment.
+
+        Args:
+            env: The environment to collect from.
+            n_steps: Number of steps to collect.
+            reset: If True, reset the environment at start. If False, continue from current state.
+        """
+        if reset:
+            obs, info = env.reset()
+        else:
+            obs = env._get_observation()
         for _ in range(n_steps):
             graph_data = env.get_graph_data()
             graph_data = graph_data.to(self.device)
@@ -203,10 +250,23 @@ class PPOTrainer:
             with torch.no_grad():
                 action, log_prob, value = self.policy.get_action(state_emb, torch_mask)
 
+            # Capture state snapshot for reward shaping (before action)
+            if self.use_reward_shaping and self.reward_shaper is not None:
+                snapshot_before = self.reward_shaper.get_state_snapshot(env)
+
             # Convert action tensors to python ints for env.step
             action_cpu = {k: int(v.item()) for k, v in action.items()}
             next_obs, reward, terminated, truncated, info = env.step(action_cpu)
             done = terminated or truncated
+
+            # Apply reward shaping if enabled
+            if self.use_reward_shaping and self.reward_shaper is not None:
+                snapshot_after = self.reward_shaper.get_state_snapshot(env)
+                shaped_reward = self.reward_shaper.shape_reward(
+                    snapshot_before, snapshot_after, reward
+                )
+                # Blend raw and shaped rewards
+                reward = (1 - self.reward_shaping_weight) * reward + self.reward_shaping_weight * shaped_reward
 
             # Store experience — keep raw graph data for re-encoding during update
             self.buffer["graph_data"].append(graph_data.cpu())
@@ -344,10 +404,25 @@ class PPOTrainer:
                 )
                 policy_loss = -torch.min(surr1, surr2).mean()
                 value_loss = F.mse_loss(values.squeeze(-1), batch_returns)
+
+                # Compute entropy loss with adaptive or scheduled coefficient
+                if self.use_adaptive_entropy and self.entropy_tuner is not None:
+                    # SAC-style adaptive entropy: use learnable temperature
+                    # get_alpha() returns float, alpha property returns tensor
+                    alpha = self.entropy_tuner.alpha  # Use tensor for gradient flow
+                    entropy_loss = -alpha * entropy.mean()
+                    # Update alpha based on current entropy (target vs actual)
+                    self.entropy_tuner.update(entropy.mean())
+                    current_entropy_coef = alpha.item()
+                else:
+                    # Use scheduled entropy coefficient
+                    current_entropy_coef = self.get_entropy_coef()
+                    entropy_loss = -current_entropy_coef * entropy.mean()
+
                 loss = (
                     policy_loss
                     + self.value_coef * value_loss
-                    - self.entropy_coef * entropy.mean()
+                    + entropy_loss
                 )
 
                 self.optimizer.zero_grad()
@@ -394,6 +469,7 @@ class PPOTrainer:
         result = {k: float(np.mean(v)) for k, v in metrics.items()}
         result["explained_variance"] = explained_var
         result["learning_rate"] = self.get_learning_rate()
+        result["entropy_coef"] = self.get_entropy_coef()
         result["epochs_completed"] = epoch_idx + 1  # How many PPO epochs ran (for KL early stop tracking)
 
         return result
@@ -424,8 +500,47 @@ class PPOTrainer:
         return total_norm ** 0.5
 
     def get_learning_rate(self) -> float:
-        """Get current learning rate."""
-        return self.optimizer.param_groups[0]["lr"]
+        """Get current policy learning rate (encoder uses scaled rate)."""
+        # param_groups[0] = encoder, param_groups[1] = policy
+        return self.optimizer.param_groups[1]["lr"]
+
+    def get_learning_rates(self) -> Dict[str, float]:
+        """Get learning rates for both encoder and policy."""
+        return {
+            "encoder_lr": self.optimizer.param_groups[0]["lr"],
+            "policy_lr": self.optimizer.param_groups[1]["lr"],
+        }
+
+    def get_entropy_coef(self) -> float:
+        """Get current entropy coefficient based on annealing schedule.
+
+        Supports four schedule types:
+        - 'constant': Fixed entropy coefficient throughout training
+        - 'linear': Linear decay from initial to final
+        - 'exponential': Exponential decay with rate 0.99 per epoch
+        - 'cosine': Cosine annealing (smooth decay with warmup-like behavior)
+        """
+        if self.entropy_schedule == "constant":
+            return self.entropy_coef_initial
+
+        # Compute progress through training (0.0 to 1.0)
+        progress = min(1.0, self.current_epoch / max(1, self.total_epochs))
+
+        if self.entropy_schedule == "linear":
+            return self.entropy_coef_initial + progress * (
+                self.entropy_coef_final - self.entropy_coef_initial
+            )
+        elif self.entropy_schedule == "exponential":
+            decay = 0.99 ** self.current_epoch
+            return max(self.entropy_coef_final, self.entropy_coef_initial * decay)
+        elif self.entropy_schedule == "cosine":
+            # Cosine annealing: smooth transition from initial to final
+            return self.entropy_coef_final + 0.5 * (
+                self.entropy_coef_initial - self.entropy_coef_final
+            ) * (1 + np.cos(np.pi * progress))
+        else:
+            # Fallback to constant
+            return self.entropy_coef_initial
 
     def save_checkpoint(self, path: str) -> None:
         """Save trainer state to checkpoint."""
@@ -440,6 +555,8 @@ class PPOTrainer:
                 "var": self.return_normalizer.var if self.return_normalizer else None,
                 "count": self.return_normalizer.count if self.return_normalizer else None,
             },
+            "use_adaptive_entropy": self.use_adaptive_entropy,
+            "entropy_tuner_state": self.entropy_tuner.state_dict() if self.entropy_tuner else None,
         }
         torch.save(checkpoint, path)
 
@@ -456,3 +573,6 @@ class PPOTrainer:
             self.return_normalizer.mean = checkpoint["return_normalizer"]["mean"]
             self.return_normalizer.var = checkpoint["return_normalizer"]["var"]
             self.return_normalizer.count = checkpoint["return_normalizer"]["count"]
+        # Restore entropy tuner state if present
+        if self.entropy_tuner and checkpoint.get("entropy_tuner_state") is not None:
+            self.entropy_tuner.load_state_dict(checkpoint["entropy_tuner_state"])

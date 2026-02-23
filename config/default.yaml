@@ -51,7 +51,7 @@ n_cranes: 2
 # Reward weights (used in environment step function)
 reward_tardy: 10.0
 reward_empty_travel: 0.1
-reward_breakdown: 100.0
+reward_breakdown: 10.0  # Reduced from 100.0 - was dominating completion rewards
 reward_maintenance: 5.0
 reward_completion: 1.0
 

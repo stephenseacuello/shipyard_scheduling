@@ -1,0 +1,44 @@
+# Wandb sweep configuration for Behavioral Cloning hyperparameter optimization
+# Usage: wandb sweep experiments/sweep_bc.yaml && wandb agent <sweep_id>
+
+program: experiments/train_bc.py
+method: bayes
+metric:
+  name: bc_vs_expert_percent
+  goal: maximize
+
+parameters:
+  # Training parameters
+  epochs:
+    values: [50, 100, 150, 200]
+
+  demo-episodes:
+    values: [30, 50, 75, 100]
+
+  batch-size:
+    values: [64, 128, 256]
+
+  lr:
+    distribution: log_uniform_values
+    min: 1e-4
+    max: 1e-3
+
+  # Architecture parameters
+  hidden-dim:
+    values: [128, 256]
+
+  policy-hidden:
+    values: [256, 512]
+
+  # Fixed parameters
+  config:
+    value: config/small_instance.yaml
+
+  seed:
+    values: [42, 123, 456]
+
+# Early termination for poorly performing runs
+early_terminate:
+  type: hyperband
+  min_iter: 20
+  eta: 3

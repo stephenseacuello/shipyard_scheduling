@@ -7,8 +7,10 @@ transportation routes with associated travel times. The graph is used for
 shortest path routing and to provide spatial context to the reinforcement
 learning agent.
 
-Also includes `DualShipyardGraph` for modeling the Electric Boat dual-yard
-workflow between Quonset Point (RI) and Groton (CT).
+Includes:
+- `ShipyardGraph`: Base graph class for single-yard operations
+- `HHIShipyardGraph`: HD Hyundai Heavy Industries Ulsan shipyard model
+- `DualShipyardGraph`: Electric Boat dual-yard model (legacy)
 """
 
 from __future__ import annotations
@@ -335,3 +337,207 @@ EB_DUAL_YARD_DEFAULT_CONFIG = {
         "barge_capacity": 2,
     },
 }
+
+
+# =============================================================================
+# HD Hyundai Heavy Industries (HHI) Ulsan Shipyard Configuration
+# =============================================================================
+
+HHI_ULSAN_DEFAULT_CONFIG = {
+    "steel_processing": {
+        "facilities": [
+            {"name": "steel_stockyard", "processing_time_mean": 4.0, "processing_time_std": 1.0, "capacity": 50},
+            {"name": "cutting_shop", "processing_time_mean": 8.0, "processing_time_std": 2.0, "capacity": 20},
+            {"name": "part_fabrication", "processing_time_mean": 12.0, "processing_time_std": 3.0, "capacity": 30},
+        ],
+    },
+    "panel_assembly": {
+        "facilities": [
+            {"name": "flat_panel_line_1", "processing_time_mean": 16.0, "processing_time_std": 4.0, "capacity": 15},
+            {"name": "flat_panel_line_2", "processing_time_mean": 16.0, "processing_time_std": 4.0, "capacity": 15},
+            {"name": "curved_block_shop", "processing_time_mean": 24.0, "processing_time_std": 6.0, "capacity": 8},
+        ],
+    },
+    "block_assembly": {
+        "facilities": [
+            {"name": "block_assembly_hall_1", "processing_time_mean": 48.0, "processing_time_std": 12.0, "capacity": 10},
+            {"name": "block_assembly_hall_2", "processing_time_mean": 48.0, "processing_time_std": 12.0, "capacity": 10},
+            {"name": "block_assembly_hall_3", "processing_time_mean": 48.0, "processing_time_std": 12.0, "capacity": 8},
+            {"name": "outfitting_shop", "processing_time_mean": 40.0, "processing_time_std": 10.0, "capacity": 12},
+            {"name": "paint_shop", "processing_time_mean": 16.0, "processing_time_std": 4.0, "capacity": 8},
+        ],
+    },
+    "pre_erection": {
+        "facilities": [
+            {"name": "grand_block_staging_north", "processing_time_mean": 24.0, "processing_time_std": 6.0, "capacity": 20},
+            {"name": "grand_block_staging_south", "processing_time_mean": 24.0, "processing_time_std": 6.0, "capacity": 20},
+        ],
+    },
+    "dry_docks": [
+        {"name": "dock_1", "length_m": 490, "width_m": 115, "cranes": ["GC01", "GC02"]},
+        {"name": "dock_2", "length_m": 400, "width_m": 80, "cranes": ["GC03"]},
+        {"name": "dock_3", "length_m": 400, "width_m": 80, "cranes": ["GC04"]},
+        {"name": "dock_4", "length_m": 390, "width_m": 80, "cranes": ["GC05", "GC06"]},
+        {"name": "dock_5", "length_m": 360, "width_m": 68, "cranes": ["GC07"]},
+        {"name": "dock_6", "length_m": 350, "width_m": 65, "cranes": []},
+        {"name": "dock_7", "length_m": 320, "width_m": 60, "cranes": []},
+        {"name": "dock_8", "length_m": 300, "width_m": 55, "cranes": ["GC08"]},
+        {"name": "dock_9", "length_m": 280, "width_m": 50, "cranes": []},
+        {"name": "dock_10", "length_m": 260, "width_m": 45, "cranes": ["GC09"]},
+    ],
+    "outfitting_quays": [
+        {"name": "quay_1", "length_m": 400, "capacity": 2},
+        {"name": "quay_2", "length_m": 350, "capacity": 2},
+        {"name": "quay_3", "length_m": 300, "capacity": 1},
+    ],
+    "goliath_cranes": [
+        {"id": "GC01", "assigned_dock": "dock_1", "capacity_tons": 900, "height_m": 109},
+        {"id": "GC02", "assigned_dock": "dock_1", "capacity_tons": 900, "height_m": 109},
+        {"id": "GC03", "assigned_dock": "dock_2", "capacity_tons": 900, "height_m": 109},
+        {"id": "GC04", "assigned_dock": "dock_3", "capacity_tons": 900, "height_m": 109},
+        {"id": "GC05", "assigned_dock": "dock_4", "capacity_tons": 900, "height_m": 109},
+        {"id": "GC06", "assigned_dock": "dock_4", "capacity_tons": 600, "height_m": 90},
+        {"id": "GC07", "assigned_dock": "dock_5", "capacity_tons": 600, "height_m": 90},
+        {"id": "GC08", "assigned_dock": "dock_8", "capacity_tons": 450, "height_m": 75},
+        {"id": "GC09", "assigned_dock": "dock_10", "capacity_tons": 450, "height_m": 75},
+    ],
+    "staging_areas": [
+        {"name": "steel_staging", "capacity": 100},
+        {"name": "panel_staging", "capacity": 40},
+        {"name": "block_staging_west", "capacity": 30},
+        {"name": "block_staging_east", "capacity": 30},
+        {"name": "painted_block_storage", "capacity": 25},
+        {"name": "spmt_depot", "capacity": 32},
+    ],
+    "transport_network": {
+        "steel_stockyard": {"cutting_shop": 0.25, "steel_staging": 0.1},
+        "cutting_shop": {"part_fabrication": 0.5, "flat_panel_line_1": 0.75, "flat_panel_line_2": 0.75, "curved_block_shop": 1.0},
+        "part_fabrication": {"flat_panel_line_1": 0.5, "flat_panel_line_2": 0.5, "curved_block_shop": 0.75},
+        "flat_panel_line_1": {"block_assembly_hall_1": 1.0, "block_assembly_hall_2": 1.0, "panel_staging": 0.25},
+        "flat_panel_line_2": {"block_assembly_hall_1": 1.0, "block_assembly_hall_2": 1.0, "block_assembly_hall_3": 1.25, "panel_staging": 0.25},
+        "curved_block_shop": {"block_assembly_hall_1": 1.25, "block_assembly_hall_2": 1.25, "block_assembly_hall_3": 1.0, "panel_staging": 0.5},
+        "block_assembly_hall_1": {"outfitting_shop": 0.75, "block_staging_west": 0.25},
+        "block_assembly_hall_2": {"outfitting_shop": 0.75, "block_staging_west": 0.25},
+        "block_assembly_hall_3": {"outfitting_shop": 0.5, "block_staging_west": 0.5},
+        "outfitting_shop": {"paint_shop": 0.5, "block_staging_east": 0.5},
+        "paint_shop": {"grand_block_staging_north": 0.75, "grand_block_staging_south": 0.75, "painted_block_storage": 0.25},
+        "grand_block_staging_north": {"dock_1": 1.0, "dock_2": 1.25, "dock_3": 1.5, "dock_4": 1.75, "dock_5": 2.0},
+        "grand_block_staging_south": {"dock_5": 1.0, "dock_6": 1.25, "dock_7": 1.5, "dock_8": 1.75, "dock_9": 2.0, "dock_10": 2.25},
+        "spmt_depot": {"steel_stockyard": 0.5, "block_staging_west": 0.5, "grand_block_staging_north": 0.75},
+    },
+}
+
+
+class HHIShipyardGraph(ShipyardGraph):
+    """Graph model for HD Hyundai Heavy Industries Ulsan shipyard.
+
+    Models the world's largest shipyard with:
+    - 10 dry docks along Mipo Bay
+    - 9 Goliath cranes (109m tall)
+    - Multiple production zones from steel processing to erection
+
+    Parameters
+    ----------
+    config : dict
+        Configuration dictionary containing facility and transport definitions.
+    """
+
+    def __init__(self, config: dict) -> None:
+        # Flatten facilities from zones into a single list
+        # Support both zone-grouped and flat formats
+        facilities = []
+
+        # Try zone-grouped format first (HHI style)
+        for zone in ["steel_processing", "panel_assembly", "block_assembly", "pre_erection"]:
+            zone_facs = config.get(zone, {}).get("facilities", [])
+            facilities.extend(zone_facs)
+
+        # Fallback to flat format (default.yaml style)
+        if not facilities:
+            facilities = config.get("facilities", [])
+
+        # Build base config for parent class
+        base_config = {
+            "facilities": facilities,
+            "staging_areas": config.get("staging_areas", []),
+            "dock_grid": {"rows": 0, "cols": 0},  # We handle docks separately
+            "transport_network": config.get("transport_network", {}),
+        }
+
+        super().__init__(base_config)
+
+        # Store HHI-specific configuration
+        self.dry_docks = config.get("dry_docks", [])
+        self.goliath_cranes = config.get("goliath_cranes", [])
+        self.outfitting_quays = config.get("outfitting_quays", [])
+
+        # Add dry dock nodes
+        for dock in self.dry_docks:
+            dock_name = dock["name"]
+            self.graph.add_node(dock_name, type="dry_dock", data=dock)
+
+        # Add quay nodes
+        for quay in self.outfitting_quays:
+            quay_name = quay["name"]
+            self.graph.add_node(quay_name, type="quay", data=quay)
+
+        # Add dock-to-quay connections (post-launch)
+        self._add_dock_quay_connections()
+
+    def _add_dock_quay_connections(self) -> None:
+        """Add edges from dry docks to outfitting quays."""
+        dock_quay_map = {
+            "dock_1": ("quay_1", 0.5),
+            "dock_2": ("quay_1", 0.75),
+            "dock_3": ("quay_1", 1.0),
+            "dock_4": ("quay_2", 0.5),
+            "dock_5": ("quay_2", 0.75),
+            "dock_6": ("quay_2", 1.0),
+            "dock_7": ("quay_3", 0.5),
+            "dock_8": ("quay_3", 0.75),
+            "dock_9": ("quay_3", 1.0),
+            "dock_10": ("quay_3", 1.25),
+        }
+        for dock, (quay, time) in dock_quay_map.items():
+            if self.graph.has_node(dock) and self.graph.has_node(quay):
+                self.graph.add_edge(dock, quay, travel_time=time)
+
+    def get_docks_for_ship_type(self, ship_type: str) -> List[str]:
+        """Return list of docks suitable for a given ship type."""
+        suitable_docks = []
+        type_requirements = {
+            "lng_carrier": 390,  # Minimum dock length in meters
+            "vlcc": 450,
+            "container": 350,
+            "tanker": 300,
+            "bulk": 280,
+        }
+        min_length = type_requirements.get(ship_type, 300)
+
+        for dock in self.dry_docks:
+            if dock.get("length_m", 0) >= min_length:
+                suitable_docks.append(dock["name"])
+
+        return suitable_docks
+
+    def get_cranes_for_dock(self, dock_name: str) -> List[str]:
+        """Return list of Goliath crane IDs assigned to a dock."""
+        for dock in self.dry_docks:
+            if dock["name"] == dock_name:
+                return dock.get("cranes", [])
+        return []
+
+    def get_all_facilities(self) -> List[str]:
+        """Return all facility names."""
+        return [
+            node for node in self.get_all_nodes()
+            if self.get_node_type(node) == "facility"
+        ]
+
+    def get_all_docks(self) -> List[str]:
+        """Return all dry dock names."""
+        return [dock["name"] for dock in self.dry_docks]
+
+    def get_all_quays(self) -> List[str]:
+        """Return all outfitting quay names."""
+        return [quay["name"] for quay in self.outfitting_quays]

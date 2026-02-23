@@ -128,8 +128,10 @@ class TestPrioritizedReplayBuffer:
         td_errors = np.array([0.1, 0.5, 1.0, 2.0, 5.0, 0.2, 0.3, 0.4, 0.6, 0.8])
         buffer.update_priorities(indices, td_errors)
 
-        # Max priority should be updated
-        assert buffer.max_priority >= 5.0
+        # Max priority should be updated (priority = (|td_error| + epsilon) ^ alpha)
+        # With alpha=0.6 and max td_error=5.0: priority ≈ 5.0^0.6 ≈ 2.63
+        expected_min_priority = (5.0 + buffer.epsilon) ** buffer.alpha
+        assert buffer.max_priority >= expected_min_priority * 0.99  # Allow small tolerance
 
 
 class TestDuelingDQN:

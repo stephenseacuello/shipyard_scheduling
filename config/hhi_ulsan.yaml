@@ -1,0 +1,570 @@
+# HD Hyundai Heavy Industries - Ulsan Shipyard Configuration
+# Models LNG Carrier production at Mipo Bay, Ulsan, South Korea
+# World's largest shipyard: 1,780 acres, 4km coastline, 10 dry docks, 9 Goliath cranes
+
+log_dir: /Users/stepheneacuello/Projects/shipyard_scheduling/logs/
+checkpoint_dir: /Users/stepheneacuello/Projects/shipyard_scheduling/data/checkpoints/
+
+# Shipyard metadata
+shipyard:
+  name: "HD Hyundai Heavy Industries - Ulsan"
+  location:
+    city: "Ulsan"
+    country: "South Korea"
+    latitude: 35.5067
+    longitude: 129.4133
+  area_acres: 1780
+  coastline_km: 4
+
+# LNG Carrier configuration
+ship:
+  type: "lng_carrier"
+  capacity_cbm: 174000  # Cubic meters LNG capacity
+  length_m: 295
+  beam_m: 46
+  blocks_per_ship: 200
+  curved_block_ratio: 0.375  # 37.5% curved blocks (75 of 200)
+  flat_block_count: 125
+  curved_block_count: 75
+
+# Concurrent production
+n_ships: 8  # Ships in various production stages across 10 docks
+n_blocks_per_ship: 200  # Blocks per ship (total blocks = n_ships * n_blocks_per_ship)
+continuous_production: true  # Spawn new ships when old ones are delivered
+
+# =============================================================================
+# FACILITIES - Organized by production zone
+# =============================================================================
+
+# Zone 1: Steel Processing (Northwest area)
+steel_processing:
+  facilities:
+    - name: steel_stockyard
+      processing_time_mean: 4.0  # hours
+      processing_time_std: 1.0
+      capacity: 50
+      description: "Raw steel plate storage and staging"
+
+    - name: cutting_shop
+      processing_time_mean: 8.0
+      processing_time_std: 2.0
+      capacity: 20
+      description: "NC plasma cutting, marking, edge preparation"
+
+    - name: part_fabrication
+      processing_time_mean: 12.0
+      processing_time_std: 3.0
+      capacity: 30
+      description: "Part bending, forming, sub-assembly"
+
+# Zone 2: Panel Lines (West-Central area)
+panel_assembly:
+  facilities:
+    - name: flat_panel_line_1
+      processing_time_mean: 16.0
+      processing_time_std: 4.0
+      capacity: 15
+      description: "Flat panel assembly line 1 - bottom/side panels"
+
+    - name: flat_panel_line_2
+      processing_time_mean: 16.0
+      processing_time_std: 4.0
+      capacity: 15
+      description: "Flat panel assembly line 2 - deck panels"
+
+    - name: curved_block_shop
+      processing_time_mean: 24.0
+      processing_time_std: 6.0
+      capacity: 8
+      description: "Specialized curved block fabrication - bow/stern sections"
+
+# Zone 3: Block Assembly (Central area)
+block_assembly:
+  facilities:
+    - name: block_assembly_hall_1
+      processing_time_mean: 48.0
+      processing_time_std: 12.0
+      capacity: 10
+      description: "3D block construction hall 1 - up to 400 tons"
+
+    - name: block_assembly_hall_2
+      processing_time_mean: 48.0
+      processing_time_std: 12.0
+      capacity: 10
+      description: "3D block construction hall 2 - up to 400 tons"
+
+    - name: block_assembly_hall_3
+      processing_time_mean: 48.0
+      processing_time_std: 12.0
+      capacity: 8
+      description: "3D block construction hall 3 - specialized/engine room"
+
+    - name: outfitting_shop
+      processing_time_mean: 40.0
+      processing_time_std: 10.0
+      capacity: 12
+      description: "Pre-erection outfitting - piping, electrical, HVAC, insulation"
+
+    - name: paint_shop
+      processing_time_mean: 16.0
+      processing_time_std: 4.0
+      capacity: 8
+      description: "Block painting and coating facility"
+
+# Zone 4: Pre-Erection Staging (East-Central area)
+pre_erection:
+  facilities:
+    - name: grand_block_staging_north
+      processing_time_mean: 24.0
+      processing_time_std: 6.0
+      capacity: 20
+      description: "Grand block joining and staging - north yard"
+
+    - name: grand_block_staging_south
+      processing_time_mean: 24.0
+      processing_time_std: 6.0
+      capacity: 20
+      description: "Grand block joining and staging - south yard"
+
+# Zone 5: Dry Docks (Eastern coastline along Mipo Bay)
+dry_docks:
+  - name: dock_1
+    length_m: 490
+    width_m: 115
+    depth_m: 13.5
+    capacity: 1
+    ship_types: ["vlcc", "lng_carrier", "ulcs"]
+    cranes: ["GC01", "GC02"]
+    description: "Dock 1 - VLCC/LNG capable, largest dock"
+
+  - name: dock_2
+    length_m: 400
+    width_m: 80
+    depth_m: 12.0
+    capacity: 1
+    ship_types: ["lng_carrier", "container", "tanker"]
+    cranes: ["GC03"]
+    description: "Dock 2 - LNG/Container dock"
+
+  - name: dock_3
+    length_m: 400
+    width_m: 80
+    depth_m: 12.0
+    capacity: 1
+    ship_types: ["lng_carrier", "container", "tanker"]
+    cranes: ["GC04"]
+    description: "Dock 3 - LNG/Container dock"
+
+  - name: dock_4
+    length_m: 390
+    width_m: 80
+    depth_m: 11.5
+    capacity: 1
+    ship_types: ["lng_carrier", "lpg_carrier"]
+    cranes: ["GC05", "GC06"]
+    description: "Dock 4 - LNG/LPG specialized"
+
+  - name: dock_5
+    length_m: 360
+    width_m: 68
+    depth_m: 11.0
+    capacity: 1
+    ship_types: ["container", "tanker", "bulk"]
+    cranes: ["GC07"]
+    description: "Dock 5 - Medium vessels"
+
+  - name: dock_6
+    length_m: 350
+    width_m: 65
+    depth_m: 10.5
+    capacity: 1
+    ship_types: ["container", "tanker", "bulk"]
+    cranes: []
+    description: "Dock 6 - Medium vessels, crane-shared"
+
+  - name: dock_7
+    length_m: 320
+    width_m: 60
+    depth_m: 10.0
+    capacity: 1
+    ship_types: ["tanker", "bulk", "car_carrier"]
+    cranes: []
+    description: "Dock 7 - Smaller vessels"
+
+  - name: dock_8
+    length_m: 300
+    width_m: 55
+    depth_m: 9.5
+    capacity: 1
+    ship_types: ["bulk", "car_carrier", "ropax"]
+    cranes: ["GC08"]
+    description: "Dock 8 - Specialized vessels"
+
+  - name: dock_9
+    length_m: 280
+    width_m: 50
+    depth_m: 9.0
+    capacity: 1
+    ship_types: ["offshore", "special"]
+    cranes: []
+    description: "Dock 9 - Offshore/Special vessels"
+
+  - name: dock_10
+    length_m: 260
+    width_m: 45
+    depth_m: 8.5
+    capacity: 1
+    ship_types: ["offshore", "naval", "special"]
+    cranes: ["GC09"]
+    description: "Dock 10 - Naval/Offshore vessels"
+
+# Zone 6: Outfitting Quays (Southeast coastline)
+outfitting_quays:
+  - name: quay_1
+    length_m: 400
+    capacity: 2
+    description: "Outfitting quay 1 - post-launch systems installation"
+
+  - name: quay_2
+    length_m: 350
+    capacity: 2
+    description: "Outfitting quay 2 - post-launch systems installation"
+
+  - name: quay_3
+    length_m: 300
+    capacity: 1
+    description: "Outfitting quay 3 - final touches and testing prep"
+
+# Sea Trials Area (Ulsan Bay)
+sea_trials:
+  area: "ulsan_bay"
+  duration_mean: 72.0  # hours
+  duration_std: 24.0
+  description: "Sea trials in Ulsan Bay and East Sea"
+
+# =============================================================================
+# EQUIPMENT
+# =============================================================================
+
+# Goliath Cranes (9 total, 109m tall)
+goliath_cranes:
+  - id: GC01
+    assigned_dock: dock_1
+    capacity_tons: 900
+    height_m: 109
+    span_m: 150
+    rail_length_m: 500
+
+  - id: GC02
+    assigned_dock: dock_1
+    capacity_tons: 900
+    height_m: 109
+    span_m: 150
+    rail_length_m: 500
+
+  - id: GC03
+    assigned_dock: dock_2
+    capacity_tons: 900
+    height_m: 109
+    span_m: 100
+    rail_length_m: 420
+
+  - id: GC04
+    assigned_dock: dock_3
+    capacity_tons: 900
+    height_m: 109
+    span_m: 100
+    rail_length_m: 420
+
+  - id: GC05
+    assigned_dock: dock_4
+    capacity_tons: 900
+    height_m: 109
+    span_m: 100
+    rail_length_m: 410
+
+  - id: GC06
+    assigned_dock: dock_4
+    capacity_tons: 600
+    height_m: 90
+    span_m: 100
+    rail_length_m: 410
+
+  - id: GC07
+    assigned_dock: dock_5
+    capacity_tons: 600
+    height_m: 90
+    span_m: 85
+    rail_length_m: 380
+
+  - id: GC08
+    assigned_dock: dock_8
+    capacity_tons: 450
+    height_m: 75
+    span_m: 70
+    rail_length_m: 320
+
+  - id: GC09
+    assigned_dock: dock_10
+    capacity_tons: 450
+    height_m: 75
+    span_m: 60
+    rail_length_m: 280
+
+# Transporters (SPMT/DCT fleet)
+transporters:
+  n_spmts: 24  # Self-Propelled Modular Transporters
+  n_dcts: 8    # Dock Carrier Transporters (heavier duty)
+  spmt_capacity_tons: 500
+  dct_capacity_tons: 1200
+
+# Staging Areas
+staging_areas:
+  - name: steel_staging
+    capacity: 100
+    description: "Steel plate staging before cutting"
+
+  - name: panel_staging
+    capacity: 40
+    description: "Panel staging between fabrication and assembly"
+
+  - name: block_staging_west
+    capacity: 30
+    description: "Block staging west of assembly halls"
+
+  - name: block_staging_east
+    capacity: 30
+    description: "Block staging east, near pre-erection"
+
+  - name: painted_block_storage
+    capacity: 25
+    description: "Painted blocks awaiting erection"
+
+# =============================================================================
+# TRANSPORT NETWORK (travel times in hours)
+# =============================================================================
+
+transport_network:
+  # Steel Processing flow
+  steel_stockyard:
+    cutting_shop: 0.25
+    steel_staging: 0.1
+
+  cutting_shop:
+    part_fabrication: 0.5
+    flat_panel_line_1: 0.75
+    flat_panel_line_2: 0.75
+    curved_block_shop: 1.0
+
+  part_fabrication:
+    flat_panel_line_1: 0.5
+    flat_panel_line_2: 0.5
+    curved_block_shop: 0.75
+
+  # Panel Assembly flow
+  flat_panel_line_1:
+    block_assembly_hall_1: 1.0
+    block_assembly_hall_2: 1.0
+    panel_staging: 0.25
+
+  flat_panel_line_2:
+    block_assembly_hall_1: 1.0
+    block_assembly_hall_2: 1.0
+    block_assembly_hall_3: 1.25
+    panel_staging: 0.25
+
+  curved_block_shop:
+    block_assembly_hall_1: 1.25
+    block_assembly_hall_2: 1.25
+    block_assembly_hall_3: 1.0
+    panel_staging: 0.5
+
+  # Block Assembly flow
+  block_assembly_hall_1:
+    outfitting_shop: 0.75
+    block_staging_west: 0.25
+
+  block_assembly_hall_2:
+    outfitting_shop: 0.75
+    block_staging_west: 0.25
+
+  block_assembly_hall_3:
+    outfitting_shop: 0.5
+    block_staging_west: 0.5
+
+  outfitting_shop:
+    paint_shop: 0.5
+    block_staging_east: 0.5
+
+  paint_shop:
+    grand_block_staging_north: 0.75
+    grand_block_staging_south: 0.75
+    painted_block_storage: 0.25
+
+  # Pre-Erection to Dry Docks
+  grand_block_staging_north:
+    dock_1: 1.0
+    dock_2: 1.25
+    dock_3: 1.5
+    dock_4: 1.75
+    dock_5: 2.0
+
+  grand_block_staging_south:
+    dock_5: 1.0
+    dock_6: 1.25
+    dock_7: 1.5
+    dock_8: 1.75
+    dock_9: 2.0
+    dock_10: 2.25
+
+  # Dry Docks to Outfitting Quays (post-launch)
+  dock_1:
+    quay_1: 0.5
+  dock_2:
+    quay_1: 0.75
+  dock_3:
+    quay_1: 1.0
+    quay_2: 0.75
+  dock_4:
+    quay_2: 0.5
+  dock_5:
+    quay_2: 0.75
+  dock_6:
+    quay_2: 1.0
+    quay_3: 0.75
+  dock_7:
+    quay_3: 0.5
+  dock_8:
+    quay_3: 0.75
+  dock_9:
+    quay_3: 1.0
+  dock_10:
+    quay_3: 1.25
+
+# =============================================================================
+# BLOCK TYPES (for LNG Carriers)
+# =============================================================================
+
+block_types:
+  - type: flat_bottom
+    description: "Double bottom blocks"
+    count_per_ship: 25
+    avg_weight_tons: 350
+    processing_multiplier: 1.0
+
+  - type: flat_side
+    description: "Side shell blocks"
+    count_per_ship: 30
+    avg_weight_tons: 280
+    processing_multiplier: 1.0
+
+  - type: deck
+    description: "Weather deck blocks"
+    count_per_ship: 25
+    avg_weight_tons: 250
+    processing_multiplier: 0.9
+
+  - type: cargo_tank_support
+    description: "Membrane tank support structure"
+    count_per_ship: 30
+    avg_weight_tons: 320
+    processing_multiplier: 1.2
+
+  - type: engine_room
+    description: "Engine room blocks"
+    count_per_ship: 15
+    avg_weight_tons: 400
+    processing_multiplier: 1.3
+
+  - type: curved_bow
+    description: "Bow section curved blocks"
+    count_per_ship: 25
+    avg_weight_tons: 280
+    processing_multiplier: 1.4
+
+  - type: curved_stern
+    description: "Stern section curved blocks"
+    count_per_ship: 30
+    avg_weight_tons: 300
+    processing_multiplier: 1.4
+
+  - type: accommodation
+    description: "Superstructure/accommodation blocks"
+    count_per_ship: 20
+    avg_weight_tons: 200
+    processing_multiplier: 1.1
+
+# =============================================================================
+# REWARD CONFIGURATION
+# =============================================================================
+
+reward_tardy: 10.0           # Penalty per hour of tardiness
+reward_empty_travel: 0.1     # Penalty for empty SPMT travel
+reward_breakdown: 10.0       # Reduced from 100.0 - was dominating completion rewards
+reward_maintenance: 5.0      # Small penalty for maintenance (opportunity cost)
+reward_completion: 1.0       # Reward for block completion
+reward_erection: 10.0        # Reward for successful erection
+reward_ship_delivery: 500.0  # Major reward for ship delivery
+
+# Cost weights
+cost_weight_tardiness: 10.0
+cost_weight_breakdown: 100.0
+cost_weight_maintenance: 5.0
+cost_weight_empty_travel: 1.0
+cost_weight_dock_idle: 50.0  # Cost of idle dock time
+
+max_time: 50000  # Extended for large-scale operations
+
+# =============================================================================
+# DEGRADATION MODEL
+# =============================================================================
+
+degradation:
+  base_drift: 0.15          # Increased from 0.05 - more visible degradation
+  load_drift_factor: 0.2    # Increased from 0.1
+  volatility: 0.05          # Increased from 0.02 - more randomness
+  failure_threshold: 20.0
+
+# Goliath crane specific degradation
+goliath_degradation:
+  hoist_drift: 0.10         # Increased from 0.03
+  trolley_drift: 0.12       # Increased from 0.04
+  gantry_drift: 0.08        # Increased from 0.02
+  volatility: 0.04          # Increased from 0.015
+
+# =============================================================================
+# PPO HYPERPARAMETERS
+# =============================================================================
+
+ppo:
+  lr: 3e-4
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_epsilon: 0.2
+  entropy_coef: 0.01
+  value_coef: 0.5
+  max_grad_norm: 0.5
+  n_epochs: 4
+  batch_size: 128  # Larger batch for 200 blocks
+
+# =============================================================================
+# CURRICULUM LEARNING
+# =============================================================================
+
+curriculum:
+  milestones:
+    0: {n_blocks: 50, n_ships: 2, max_time: 15000}
+    10: {n_blocks: 100, n_ships: 4, max_time: 25000}
+    20: {n_blocks: 150, n_ships: 6, max_time: 35000}
+    30: {n_blocks: 200, n_ships: 8, max_time: 50000}
+
+# =============================================================================
+# LNG-SPECIFIC PARAMETERS
+# =============================================================================
+
+lng_specific:
+  cargo_containment_system: "membrane"  # "membrane" or "moss"
+  tank_count: 4
+  insulation_type: "reinforced_polyurethane_foam"
+  boil_off_rate: 0.1  # % per day (for context, not simulated)
+  cryogenic_testing_hours: 48

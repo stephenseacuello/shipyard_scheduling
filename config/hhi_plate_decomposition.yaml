@@ -1,0 +1,29 @@
+# HHI Ulsan with plate-level decomposition enabled
+# Uses synthetic plate generation when no real decomposition data is available
+
+inherit_from: default.yaml
+
+# HHI-specific overrides
+n_ships: 2
+n_blocks_per_ship: 50
+
+max_time: 2000
+
+# Plate decomposition configuration
+plate_decomposition:
+  enable: true
+  data_dir: ""  # Empty = no external data, use synthetic
+  synthetic_fallback: true
+  enable_substages: true
+  validate_on_load: true
+
+# PuLP MIP scheduler configuration (for baseline comparison)
+pulp_scheduler:
+  horizon: 30
+  replan_interval: 10
+  solver_time_limit: 3.0
+  objective_weights:
+    tardiness: 10.0
+    transport_cost: 1.0
+    idle_time: 5.0
+    maintenance_opportunity: 2.0

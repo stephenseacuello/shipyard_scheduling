@@ -1,0 +1,18 @@
+# Tiny instance configuration (10 blocks for testing RL learning)
+
+inherit_from: default.yaml
+
+# Override specific fields - very small instance for debugging
+n_blocks: 10
+n_spmts: 2
+n_cranes: 1
+
+# HHI-specific overrides to ensure small instance
+n_ships: 1
+n_blocks_per_ship: 10
+
+max_time: 500  # Shorter episodes for faster learning
+
+# Simplified reward weights - less punitive
+reward_breakdown: 5.0
+reward_tardy: 5.0

@@ -23,9 +23,9 @@ def test_is_predecessor_complete_all_placed():
 
     # Create placed predecessor blocks
     b0 = Block(id="B0", weight=100, size=(10, 10), due_date=50)
-    b0.status = BlockStatus.PLACED_ON_DOCK
+    b0.status = BlockStatus.ERECTED
     b1 = Block(id="B1", weight=100, size=(10, 10), due_date=75)
-    b1.status = BlockStatus.PLACED_ON_DOCK
+    b1.status = BlockStatus.ERECTED
 
     placed_blocks = {"B0": b0, "B1": b1}
     assert is_predecessor_complete(block, placed_blocks) is True
@@ -38,7 +38,7 @@ def test_is_predecessor_complete_missing_predecessor():
 
     # Only B0 is placed
     b0 = Block(id="B0", weight=100, size=(10, 10), due_date=50)
-    b0.status = BlockStatus.PLACED_ON_DOCK
+    b0.status = BlockStatus.ERECTED
 
     placed_blocks = {"B0": b0}
     assert is_predecessor_complete(block, placed_blocks) is False
@@ -54,7 +54,7 @@ def test_is_predecessor_complete_predecessor_not_on_dock():
 
     placed_blocks = {"B0": b0}
     # The function checks if block is IN placed_blocks dict, so this should fail
-    # if the dict only contains blocks with PLACED_ON_DOCK status
+    # if the dict only contains blocks with ERECTED status
     # Let's test with a placed_blocks that only includes truly placed blocks
     placed_blocks_actual = {}  # B0 not truly placed
     assert is_predecessor_complete(block, placed_blocks_actual) is False
@@ -138,7 +138,7 @@ def test_crane_dispatch_allows_after_predecessor_placed():
     blocks[1].predecessors = ["B0"]
 
     # B0 is placed on dock
-    blocks[0].status = BlockStatus.PLACED_ON_DOCK
+    blocks[0].status = BlockStatus.ERECTED
 
     # B1 is at pre-erection
     blocks[1].status = BlockStatus.AT_PRE_ERECTION

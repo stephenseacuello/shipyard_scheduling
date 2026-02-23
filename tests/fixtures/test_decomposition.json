@@ -1,0 +1,86 @@
+{
+  "ship_id": "HN_TEST_01",
+  "ship_type": "lng_carrier",
+  "decomposition_version": "1.0",
+  "source_model": "test_fixture",
+  "blocks": [
+    {
+      "block_id": "B_HN_TEST_01_001",
+      "block_type": "flat_bottom",
+      "erection_sequence": 1,
+      "predecessors": [],
+      "size_m": [20.0, 18.0, 12.0],
+      "plates": [
+        {
+          "plate_id": "P_TEST_001_001",
+          "plate_type": "flat",
+          "length_mm": 12000,
+          "width_mm": 3200,
+          "thickness_mm": 22,
+          "material_grade": "AH36",
+          "has_stiffeners": true,
+          "n_stiffeners": 4,
+          "stiffener_spacing_mm": 600,
+          "curvature_radius_mm": 0
+        },
+        {
+          "plate_id": "P_TEST_001_002",
+          "plate_type": "flat",
+          "length_mm": 10000,
+          "width_mm": 3000,
+          "thickness_mm": 20,
+          "material_grade": "AH36",
+          "has_stiffeners": false,
+          "n_stiffeners": 0,
+          "stiffener_spacing_mm": 0,
+          "curvature_radius_mm": 0
+        },
+        {
+          "plate_id": "P_TEST_001_003",
+          "plate_type": "stiffened",
+          "length_mm": 11000,
+          "width_mm": 2800,
+          "thickness_mm": 18,
+          "material_grade": "DH36",
+          "has_stiffeners": true,
+          "n_stiffeners": 3,
+          "stiffener_spacing_mm": 700,
+          "curvature_radius_mm": 0
+        }
+      ]
+    },
+    {
+      "block_id": "B_HN_TEST_01_002",
+      "block_type": "curved_bow",
+      "erection_sequence": 2,
+      "predecessors": ["B_HN_TEST_01_001"],
+      "size_m": [15.0, 12.0, 10.0],
+      "plates": [
+        {
+          "plate_id": "P_TEST_002_001",
+          "plate_type": "curved",
+          "length_mm": 9000,
+          "width_mm": 2500,
+          "thickness_mm": 25,
+          "material_grade": "EH36",
+          "has_stiffeners": false,
+          "n_stiffeners": 0,
+          "stiffener_spacing_mm": 0,
+          "curvature_radius_mm": 15000
+        },
+        {
+          "plate_id": "P_TEST_002_002",
+          "plate_type": "shell",
+          "length_mm": 8000,
+          "width_mm": 2200,
+          "thickness_mm": 28,
+          "material_grade": "EH36",
+          "has_stiffeners": true,
+          "n_stiffeners": 2,
+          "stiffener_spacing_mm": 800,
+          "curvature_radius_mm": 12000
+        }
+      ]
+    }
+  ]
+}

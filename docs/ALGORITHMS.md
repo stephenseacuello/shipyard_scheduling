@@ -316,64 +316,192 @@ Output: Advantages A[1:T]
 19: return A
 ```
 
-## Algorithm 8: Rule-Based Baseline (EDD + Nearest Vehicle)
+## Algorithm 8: DAgger (Dataset Aggregation) for Imitation Learning
 
 ```
-Algorithm 8: Rule-Based Scheduling Decision
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Algorithm 8: DAgger Training for Shipyard Scheduling
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Input: Environment E, GNN encoder φ, Policy π, Expert π*
+       Number of iterations N, Initial demos D₀, Demos per iteration D_i
+       Beta schedule β₁...βₙ (expert probability, annealed from 1.0 to 0.1)
+       Training epochs K, Learning rate α
+
+Output: Trained policy π that matches or exceeds expert
+
+1:  // Phase 1: Collect initial expert demonstrations
+2:  Dataset D ← {}
+3:  for episode = 1 to D₀ do
+4:      s ← E.reset()
+5:      for t = 1 to T_max do
+6:          G ← E.get_graph_data()
+7:          z ← φ(G)                     // Encode state
+8:          a* ← π*.decide(E)            // Query expert
+9:          D ← D ∪ {(z, a*)}            // Store state-action pair
+10:         s, r, done ← E.step(a*)      // Expert drives
+11:         if done then break
+12:     end for
+13: end for
+14:
+15: // Initialize feature normalizer with collected data
+16: μ, σ ← compute_running_stats(D.states)
+17:
+18: // Initial BC training
+19: for epoch = 1 to K do
+20:     L ← behavioral_cloning_loss(π, D, μ, σ)
+21:     π ← π - α∇L
+22: end for
+23:
+24: // Phase 2: DAgger iterations
+25: best_π ← π
+26: for iteration = 1 to N do
+27:     β ← β₁ - (β₁ - βₙ) × iteration / N    // Anneal beta
+28:
+29:     // Collect new data under policy/expert mixture
+30:     for episode = 1 to D_i do
+31:         s ← E.reset()
+32:         for t = 1 to T_max do
+33:             G ← E.get_graph_data()
+34:             z ← φ(G)
+35:
+36:             // Always query expert for label
+37:             a* ← π*.decide(E)
+38:             D ← D ∪ {(z, a*)}
+39:
+40:             // Choose who drives: expert (prob β) or policy (prob 1-β)
+41:             if random() < β then
+42:                 a ← a*                    // Expert drives
+43:             else
+44:                 z_norm ← (z - μ) / σ     // Normalize
+45:                 a ← π.sample(z_norm)      // Policy drives
+46:             end if
+47:
+48:             s, r, done ← E.step(a)
+49:             if done then break
+50:         end for
+51:     end for
+52:
+53:     // Update normalizer with new data
+54:     μ, σ ← update_running_stats(D.states)
+55:
+56:     // Retrain on aggregated dataset
+57:     for epoch = 1 to K do
+58:         L ← behavioral_cloning_loss(π, D, μ, σ)
+59:         π ← π - α∇L
+60:     end for
+61:
+62:     // Track best policy
+63:     if evaluate(π) > evaluate(best_π) then
+64:         best_π ← π
+65:     end if
+66: end for
+67:
+68: return best_π
+```
+
+**Key insight:** DAgger addresses the distribution mismatch problem in behavioral cloning.
+- BC trains on expert states → fails on learner states (compounding errors)
+- DAgger iteratively collects expert labels on learner-visited states
+- The learner progressively takes over driving (β annealing)
+- Expert always provides the "correct" action, teaching recovery
+
+**Why DAgger outperforms RL on hierarchical action spaces:**
+- RL suffers entropy collapse when action masking leaves few valid options
+- DAgger sidesteps exploration entirely by learning from dense supervision
+- Expert provides consistent, high-quality labels regardless of policy state
+
+## Algorithm 9: Rule-Based Baseline (EDD + Nearest Vehicle)
+
+```
+Algorithm 9: Rule-Based Scheduling Decision (Crane-First Priority)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Input: Environment state, Transport requests R, Lift requests L
 
 Output: Action a
 
-1:  // Check for maintenance needs first
-2:  for equipment in all_equipment do
-3:      if equipment.status == IDLE and equipment.min_health < 40 then
-4:          return {type: 2, equipment: equipment.idx}
-5:      end if
-6:  end for
-7:
-8:  // Try SPMT dispatch (EDD priority, nearest vehicle)
-9:  if R not empty then
-10:     // Sort requests by due date (earliest first)
-11:     R_sorted ← sort(R, key=due_date)
-12:     for request in R_sorted do
-13:         block ← get_block(request.block_id)
-14:         best_spmt ← None
-15:         best_time ← ∞
+1:  // PRIORITY 1: Crane dispatch (erection is on critical path)
+2:  // Dispatch cranes FIRST to prevent backlog at pre-erection staging
+3:  if L not empty then
+4:      L_sorted ← sort(L, key=due_date)
+5:      for request in L_sorted do
+6:          block ← get_block(request.block_id)
+7:          if predecessors_complete(block) then
+8:              for crane in cranes do
+9:                  if crane.status == IDLE and block.weight ≤ crane.capacity then
+10:                     return {type: 1, crane: crane.idx, lift: request.idx}
+11:                 end if
+12:             end for
+13:         end if
+14:     end for
+15: end if
 16:
-17:         for spmt in spmts do
-18:             if spmt.status == IDLE and block.weight ≤ spmt.capacity then
-19:                 travel_time ← get_travel_time(spmt.location, block.location)
-20:                 if travel_time < best_time then
-21:                     best_time ← travel_time
-22:                     best_spmt ← spmt
-23:                 end if
-24:             end if
-25:         end for
-26:
-27:         if best_spmt ≠ None then
-28:             return {type: 0, spmt: best_spmt.idx, request: request.idx}
-29:         end if
-30:     end for
-31: end if
-32:
-33: // Try crane dispatch
-34: if L not empty then
-35:     for request in L do
-36:         block ← get_block(request.block_id)
-37:         if predecessors_complete(block) then
-38:             for crane in cranes do
-39:                 if crane.status == IDLE and block.weight ≤ crane.capacity then
-40:                     return {type: 1, crane: crane.idx, lift: request.idx}
-41:                 end if
-42:             end for
-43:         end if
-44:     end for
-45: end if
-46:
-47: // Default: Hold
-48: return {type: 3}
+17: // PRIORITY 2: SPMT dispatch (EDD priority, nearest vehicle)
+18: if R not empty then
+19:     R_sorted ← sort(R, key=due_date)
+20:     for request in R_sorted do
+21:         block ← get_block(request.block_id)
+22:         best_spmt ← None
+23:         best_time ← ∞
+24:
+25:         for spmt in spmts do
+26:             if spmt.status == IDLE and block.weight ≤ spmt.capacity then
+27:                 travel_time ← get_travel_time(spmt.location, block.location)
+28:                 if travel_time < best_time then
+29:                     best_time ← travel_time
+30:                     best_spmt ← spmt
+31:                 end if
+32:             end if
+33:         end for
+34:
+35:         if best_spmt ≠ None then
+36:             return {type: 0, spmt: best_spmt.idx, request: request.idx}
+37:         end if
+38:     end for
+39: end if
+40:
+41: // PRIORITY 3: Preventive maintenance
+42: for equipment in all_equipment do
+43:     if equipment.status == IDLE and equipment.min_health < 40 then
+44:         return {type: 2, equipment: equipment.idx}
+45:     end if
+46: end for
+47:
+48: // Default: Hold
+49: return {type: 3}
 ```
+
+**Priority Ordering Rationale:**
+- Crane dispatch (erection) is prioritized because it's on the critical path to ship completion
+- SPMT dispatch feeds the erection process; dispatching transport before cranes can cause staging bottlenecks
+- Maintenance is lowest priority when there's active work available
+
+## Algorithm 10: Incremental Tardiness Calculation
+
+```
+Algorithm 10: Incremental Tardiness Accumulation
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Input: Blocks B, Simulation time t_sim, Time step dt
+
+Output: Tardiness increment Δ_tardy
+
+1:  Δ_tardy ← 0
+2:  for block in B do
+3:      if block.status not in {ERECTED, COMPLETE} then
+4:          if t_sim > block.due_date then
+5:              // Block is tardy - add dt (one unit of additional tardiness)
+6:              Δ_tardy ← Δ_tardy + dt
+7:          end if
+8:      end if
+9:  end for
+10: return Δ_tardy
+```
+
+**Why Incremental (not Cumulative):**
+- **Old method**: `tardiness += (t_sim - due_date) × dt` per block per step
+  - With 200 blocks, each 25000 steps tardy: 200 × 25000 × 1 = 5M per step
+  - After 30000 steps: reward reaches -19 billion
+- **New method**: `tardiness += dt` per tardy block per step
+  - With 200 tardy blocks: 200 × 1 = 200 per step
+  - After 30000 steps: total tardiness ~6M (manageable)
 
 ## Complexity Analysis
 

@@ -1,178 +1,311 @@
-/* Shipyard MES Dashboard — Design System */
+/* =============================================================================
+   HD HYUNDAI HEAVY INDUSTRIES - SHIPYARD MES DASHBOARD
+   Modern Design System for HHI Ulsan, South Korea
+   ============================================================================= */
 
 :root {
-    --primary: #2c3e50;
-    --primary-light: #34495e;
-    --accent: #3498db;
-    --success: #27ae60;
-    --warning: #f39c12;
-    --danger: #e74c3c;
-    --bg: #f0f2f5;
+    /* HD Hyundai Brand Colors */
+    --hhi-blue: #003366;
+    --hhi-blue-light: #0052a3;
+    --hhi-blue-dark: #001f3d;
+    --hhi-teal: #00758f;
+    --hhi-orange: #ff6b35;
+
+    /* UI Colors */
+    --primary: var(--hhi-blue);
+    --primary-light: var(--hhi-blue-light);
+    --accent: var(--hhi-teal);
+    --accent-bright: #00b4d8;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --info: #3b82f6;
+
+    /* Backgrounds */
+    --bg: #f1f5f9;
+    --bg-dark: #0f172a;
     --card-bg: #ffffff;
-    --text: #2c3e50;
-    --text-muted: #7f8c8d;
-    --border: #e1e4e8;
+    --card-bg-alt: #f8fafc;
+
+    /* Text */
+    --text: #1e293b;
+    --text-light: #475569;
+    --text-muted: #94a3b8;
+    --text-inverse: #ffffff;
+
+    /* Borders */
+    --border: #e2e8f0;
+    --border-light: #f1f5f9;
+    --border-dark: #cbd5e1;
+
+    /* Spacing */
     --space-xs: 4px;
     --space-sm: 8px;
     --space-md: 16px;
     --space-lg: 24px;
     --space-xl: 32px;
-    --radius: 8px;
-    --shadow: 0 2px 8px rgba(0,0,0,0.08);
-    --shadow-hover: 0 4px 16px rgba(0,0,0,0.12);
+    --space-2xl: 48px;
+
+    /* Radius */
+    --radius-sm: 6px;
+    --radius: 10px;
+    --radius-lg: 16px;
+    --radius-xl: 24px;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+    --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+    --shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.12), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    --shadow-inner: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+
+    /* Transitions */
+    --transition-fast: 150ms ease;
+    --transition: 200ms ease;
+    --transition-slow: 300ms ease;
 }
 
-* { box-sizing: border-box; }
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #0f172a;
+        --card-bg: #1e293b;
+        --card-bg-alt: #334155;
+        --text: #f1f5f9;
+        --text-light: #cbd5e1;
+        --text-muted: #64748b;
+        --border: #334155;
+        --border-light: #1e293b;
+        --border-dark: #475569;
+    }
+}
 
-body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+* {
+    box-sizing: border-box;
     margin: 0;
     padding: 0;
-    background-color: var(--bg);
-    color: var(--text);
-    font-size: 14px;
-    line-height: 1.5;
 }
 
-/* App container */
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* =============================================================================
+   LAYOUT
+   ============================================================================= */
+
 .app-container {
-    max-width: 1440px;
+    max-width: 1600px;
     margin: 0 auto;
     padding: var(--space-lg);
 }
 
-/* Header */
+/* App Header with HHI Branding */
 .app-header {
+    background: linear-gradient(135deg, var(--hhi-blue) 0%, var(--hhi-blue-dark) 100%);
+    padding: var(--space-lg) var(--space-xl);
+    margin: calc(-1 * var(--space-lg));
     margin-bottom: var(--space-lg);
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    position: relative;
+    overflow: hidden;
 }
+
+.app-header::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -10%;
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+    pointer-events: none;
+}
+
 .app-header h1 {
-    color: var(--primary);
-    font-size: 24px;
+    color: var(--text-inverse);
+    font-size: 28px;
     font-weight: 700;
     margin: 0 0 var(--space-xs) 0;
+    letter-spacing: -0.5px;
 }
+
 .app-header .subtitle {
-    color: var(--text-muted);
-    font-size: 14px;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 15px;
     margin: 0;
+    font-weight: 400;
 }
 
-/* Control bar */
-.control-bar {
-    display: flex;
+/* Location badge */
+.location-badge {
+    display: inline-flex;
     align-items: center;
-    gap: var(--space-md);
-    padding: var(--space-sm) var(--space-md);
-    background: var(--card-bg);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    margin-bottom: var(--space-md);
-    flex-wrap: wrap;
-}
-.control-bar label {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-muted);
-    white-space: nowrap;
+    gap: var(--space-sm);
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(10px);
+    padding: var(--space-xs) var(--space-md);
+    border-radius: 20px;
+    font-size: 12px;
+    color: var(--text-inverse);
+    margin-top: var(--space-sm);
 }
 
-/* Tabs */
+.location-badge::before {
+    content: '\1F30F';  /* Globe emoji */
+}
+
+/* =============================================================================
+   NAVIGATION TABS
+   ============================================================================= */
+
+.custom-tabs {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    padding: var(--space-xs);
+    margin-bottom: var(--space-lg);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border);
+}
+
 .custom-tabs .tab {
     border: none !important;
-    border-bottom: 3px solid transparent !important;
     background: transparent !important;
-    padding: 12px 20px !important;
+    padding: var(--space-sm) var(--space-lg) !important;
     font-weight: 500;
-    color: var(--text-muted);
     font-size: 14px;
+    color: var(--text-muted);
+    border-radius: var(--radius-sm) !important;
+    transition: all var(--transition);
+    margin: 2px;
 }
+
+.custom-tabs .tab:hover {
+    background: var(--bg) !important;
+    color: var(--text);
+}
+
 .custom-tabs .tab--selected {
-    border-bottom-color: var(--accent) !important;
-    color: var(--primary) !important;
+    background: var(--primary) !important;
+    color: var(--text-inverse) !important;
     font-weight: 600;
 }
-.custom-tabs {
-    border-bottom: 2px solid var(--border) !important;
-}
 
-/* Tab content */
 .tab-content {
-    padding: var(--space-lg) 0;
+    padding: var(--space-md) 0;
 }
 
-/* KPI cards grid */
+/* =============================================================================
+   KPI CARDS
+   ============================================================================= */
+
 .kpi-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: var(--space-md);
-    margin-bottom: var(--space-lg);
+    margin-bottom: var(--space-xl);
 }
+
 .kpi-card {
     background: var(--card-bg);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: var(--space-md) var(--space-lg);
-    text-align: center;
-    transition: box-shadow 0.2s, transform 0.2s;
-    box-shadow: var(--shadow);
+    padding: var(--space-lg);
+    position: relative;
+    overflow: hidden;
+    transition: all var(--transition);
+    box-shadow: var(--shadow-sm);
 }
+
+.kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, var(--accent) 0%, var(--accent-bright) 100%);
+}
+
 .kpi-card:hover {
-    box-shadow: var(--shadow-hover);
-    transform: translateY(-2px);
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-md);
 }
+
 .kpi-card-label {
     font-size: 12px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.8px;
     color: var(--text-muted);
-    margin: 0 0 var(--space-sm) 0;
+    margin-bottom: var(--space-sm);
 }
+
 .kpi-card-value {
-    font-size: 28px;
+    font-size: 32px;
     font-weight: 700;
     color: var(--primary);
-    margin: 0;
+    line-height: 1.2;
 }
 
-/* Section headers */
+.kpi-card-trend {
+    font-size: 13px;
+    margin-top: var(--space-xs);
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+}
+
+.kpi-card-trend.positive { color: var(--success); }
+.kpi-card-trend.negative { color: var(--danger); }
+
+/* =============================================================================
+   SECTION HEADERS
+   ============================================================================= */
+
 .section-header {
-    font-size: 18px;
-    font-weight: 600;
-    color: var(--primary);
-    margin: var(--space-lg) 0 var(--space-md) 0;
-    padding-bottom: var(--space-sm);
-    border-bottom: 2px solid var(--border);
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+    margin: var(--space-xl) 0 var(--space-lg) 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
 }
 
-/* Chart containers */
+.section-header::after {
+    content: '';
+    flex: 1;
+    height: 2px;
+    background: linear-gradient(90deg, var(--border) 0%, transparent 100%);
+}
+
+/* =============================================================================
+   CARDS & CONTAINERS
+   ============================================================================= */
+
 .chart-card {
     background: var(--card-bg);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: var(--space-md);
+    padding: var(--space-lg);
     margin-bottom: var(--space-lg);
-    box-shadow: var(--shadow);
+    box-shadow: var(--shadow-sm);
 }
 
-/* Tables */
-.dash-table-container {
-    margin-top: var(--space-sm);
-    margin-bottom: var(--space-lg);
-}
-.dash-spreadsheet-container .dash-spreadsheet-inner td {
-    padding: 10px 12px !important;
-    font-size: 13px !important;
-}
-.dash-spreadsheet-container .dash-spreadsheet-inner th {
-    padding: 10px 12px !important;
-    font-size: 13px !important;
-    font-weight: 600 !important;
-    background-color: #f8f9fa !important;
-    border-bottom: 2px solid var(--border) !important;
-}
-.dash-spreadsheet-container .dash-spreadsheet-inner tr:nth-child(even) td {
-    background-color: #fafbfc !important;
+.chart-card-header {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: var(--space-md);
+    padding-bottom: var(--space-sm);
+    border-bottom: 1px solid var(--border-light);
 }
 
 /* Two-column layout */
@@ -181,87 +314,139 @@ body {
     grid-template-columns: 1fr 1fr;
     gap: var(--space-lg);
 }
-@media (max-width: 900px) {
-    .two-col {
+
+@media (max-width: 1024px) {
+    .two-col { grid-template-columns: 1fr; }
+}
+
+/* Map + Charts layout (map dominates, narrow charts sidebar) */
+.map-charts-layout {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    gap: var(--space-md);
+    min-height: 750px;
+}
+
+.map-column {
+    display: flex;
+    flex-direction: column;
+}
+
+.map-column .map-container {
+    flex: 1;
+    min-height: 750px;
+}
+
+.charts-column {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+    width: 280px;
+}
+
+.charts-column .chart-card {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 0;
+    padding: var(--space-md);
+}
+
+.charts-column .chart-card h4 {
+    font-size: 13px;
+    margin-bottom: var(--space-sm);
+}
+
+.charts-column .chart-card .js-plotly-plot,
+.charts-column .chart-card .plotly {
+    flex: 1;
+    min-height: 0;
+}
+
+@media (max-width: 1200px) {
+    .map-charts-layout {
         grid-template-columns: 1fr;
+        min-height: auto;
+    }
+
+    .map-column .map-container {
+        min-height: 500px;
+    }
+
+    .charts-column {
+        flex-direction: row;
+        width: 100%;
+    }
+
+    .charts-column .chart-card {
+        flex: 1;
     }
 }
 
-/* Status badges */
-.badge {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 12px;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
+@media (max-width: 768px) {
+    .charts-column {
+        flex-direction: column;
+    }
 }
 
-/* Empty state */
-.empty-state {
-    text-align: center;
-    padding: var(--space-xl) var(--space-lg);
-    color: var(--text-muted);
-}
-.empty-state p {
-    font-size: 15px;
-    margin: var(--space-sm) 0;
-}
+/* =============================================================================
+   MAP CONTAINER - HHI ULSAN / MIPO BAY
+   ============================================================================= */
 
-/* Footer */
-.app-footer {
-    text-align: center;
-    padding: var(--space-lg) 0;
-    color: var(--text-muted);
-    font-size: 12px;
-    border-top: 1px solid var(--border);
-    margin-top: var(--space-xl);
-}
-
-/* Loading spinner override */
-._dash-loading {
-    min-height: 100px;
-}
-
-/* ============================================================================
-   DUAL SHIPYARD MAP STYLES
-   ============================================================================ */
-
-/* Map container */
 .map-container {
     background: var(--card-bg);
     border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: var(--space-md);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-md);
     margin-bottom: var(--space-lg);
 }
 
-/* Map controls bar */
+.map-header {
+    background: linear-gradient(135deg, var(--hhi-blue) 0%, var(--hhi-teal) 100%);
+    padding: var(--space-md) var(--space-lg);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.map-header h3 {
+    color: var(--text-inverse);
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.map-header .coords {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 12px;
+    font-family: 'JetBrains Mono', monospace;
+}
+
 .map-controls {
     display: flex;
     align-items: center;
     gap: var(--space-lg);
-    padding: var(--space-sm) var(--space-md);
-    background: var(--card-bg);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    margin-bottom: var(--space-md);
-    flex-wrap: wrap;
+    padding: var(--space-sm) var(--space-lg);
+    background: var(--card-bg-alt);
+    border-bottom: 1px solid var(--border);
 }
 
 .map-controls label {
     font-size: 13px;
-    font-weight: 600;
-    color: var(--text-muted);
+    font-weight: 500;
+    color: var(--text-light);
 }
 
-/* Detail panel for map clicks */
+/* Detail panel */
 .detail-panel {
-    background: var(--card-bg);
+    background: var(--card-bg-alt);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: var(--space-md);
-    min-height: 80px;
+    padding: var(--space-lg);
     margin-top: var(--space-md);
 }
 
@@ -270,98 +455,338 @@ body {
     font-style: italic;
 }
 
-/* Dual map container */
-.dual-map-container {
+/* =============================================================================
+   DRY DOCK CARDS - 10 DOCKS
+   ============================================================================= */
+
+.dock-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: var(--space-md);
     margin-bottom: var(--space-lg);
 }
 
-/* ============================================================================
-   ALERTS BANNER STYLES
-   ============================================================================ */
-
-.alerts-banner {
-    margin-bottom: var(--space-md);
+@media (max-width: 1200px) {
+    .dock-grid { grid-template-columns: repeat(3, 1fr); }
 }
 
-.alerts-banner:empty {
-    display: none;
+@media (max-width: 768px) {
+    .dock-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
-.alert {
-    padding: var(--space-sm) var(--space-md);
+.dock-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
     border-radius: var(--radius);
-    margin-bottom: var(--space-xs);
+    padding: var(--space-md);
+    position: relative;
+    overflow: hidden;
+    transition: all var(--transition);
+}
+
+.dock-card:hover {
+    border-color: var(--accent);
+    box-shadow: var(--shadow);
+}
+
+.dock-card.occupied {
+    border-left: 4px solid var(--accent);
+}
+
+.dock-card.idle {
+    border-left: 4px solid var(--text-muted);
+    opacity: 0.7;
+}
+
+.dock-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-sm);
+}
+
+.dock-card-name {
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--text);
+}
+
+.dock-card-size {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.dock-card-ship {
     font-size: 13px;
+    color: var(--accent);
+    font-weight: 500;
+}
+
+.dock-card-progress {
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    margin-top: var(--space-sm);
+    overflow: hidden;
+}
+
+.dock-card-progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent) 0%, var(--success) 100%);
+    border-radius: 3px;
+    transition: width var(--transition-slow);
+}
+
+/* =============================================================================
+   GOLIATH CRANE CARDS
+   ============================================================================= */
+
+.crane-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--space-md);
+}
+
+.crane-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--space-md);
+    display: flex;
+    gap: var(--space-md);
+    align-items: flex-start;
+    transition: all var(--transition);
+}
+
+.crane-card:hover {
+    box-shadow: var(--shadow);
+    border-color: var(--hhi-orange);
+}
+
+.crane-icon {
+    width: 48px;
+    height: 48px;
+    background: linear-gradient(135deg, var(--hhi-blue-light) 0%, var(--hhi-blue) 100%);
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    flex-shrink: 0;
+}
+
+.crane-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.crane-name {
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--text);
+}
+
+.crane-dock {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.crane-health-bars {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    margin-top: var(--space-sm);
+}
+
+.crane-health-bar {
     display: flex;
     align-items: center;
     gap: var(--space-sm);
 }
 
-.alert strong {
-    font-weight: 700;
+.crane-health-bar label {
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    width: 50px;
+}
+
+.crane-health-bar .bar {
+    flex: 1;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.crane-health-bar .bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width var(--transition);
+}
+
+.crane-health-bar .bar-fill.good { background: var(--success); }
+.crane-health-bar .bar-fill.warning { background: var(--warning); }
+.crane-health-bar .bar-fill.danger { background: var(--danger); }
+
+/* =============================================================================
+   TABLES
+   ============================================================================= */
+
+.dash-table-container {
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+}
+
+.dash-spreadsheet-container .dash-spreadsheet-inner td {
+    padding: 12px 16px !important;
+    font-size: 13px !important;
+    border-bottom: 1px solid var(--border-light) !important;
+}
+
+.dash-spreadsheet-container .dash-spreadsheet-inner th {
+    padding: 14px 16px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: var(--hhi-blue) !important;
+    color: var(--text-inverse) !important;
+    border-bottom: none !important;
+}
+
+.dash-spreadsheet-container .dash-spreadsheet-inner tr:hover td {
+    background: var(--card-bg-alt) !important;
+}
+
+/* =============================================================================
+   STATUS BADGES
+   ============================================================================= */
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.badge-success {
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--success);
+}
+
+.badge-warning {
+    background: rgba(245, 158, 11, 0.1);
+    color: var(--warning);
+}
+
+.badge-danger {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--danger);
+}
+
+.badge-info {
+    background: rgba(59, 130, 246, 0.1);
+    color: var(--info);
+}
+
+.badge-idle {
+    background: var(--border);
+    color: var(--text-muted);
+}
+
+/* =============================================================================
+   ALERTS BANNER
+   ============================================================================= */
+
+.alerts-banner {
+    margin-bottom: var(--space-lg);
+}
+
+.alert {
+    padding: var(--space-md) var(--space-lg);
+    border-radius: var(--radius);
+    margin-bottom: var(--space-sm);
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    border-left: 4px solid;
+}
+
+.alert-icon {
+    font-size: 20px;
+    flex-shrink: 0;
 }
 
 .alert-warning {
-    background: #fff3cd;
-    border: 1px solid #ffc107;
-    color: #856404;
+    background: rgba(245, 158, 11, 0.1);
+    border-color: var(--warning);
+    color: #92400e;
 }
 
 .alert-danger {
-    background: #f8d7da;
-    border: 1px solid #dc3545;
-    color: #721c24;
+    background: rgba(239, 68, 68, 0.1);
+    border-color: var(--danger);
+    color: #991b1b;
 }
 
 .alert-info {
-    background: #d1ecf1;
-    border: 1px solid #17a2b8;
-    color: #0c5460;
+    background: rgba(59, 130, 246, 0.1);
+    border-color: var(--info);
+    color: #1e40af;
 }
 
 .alert-success {
-    background: #d4edda;
-    border: 1px solid #28a745;
-    color: #155724;
+    background: rgba(16, 185, 129, 0.1);
+    border-color: var(--success);
+    color: #065f46;
 }
 
-/* ============================================================================
-   PLAYBACK CONTROLS STYLES
-   ============================================================================ */
+/* =============================================================================
+   PLAYBACK CONTROLS
+   ============================================================================= */
 
 .playback-controls {
     display: flex;
     align-items: center;
     gap: var(--space-md);
-    padding: var(--space-sm) var(--space-md);
-    background: #f8f9fa;
+    padding: var(--space-md) var(--space-lg);
+    background: var(--card-bg);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    margin-bottom: var(--space-md);
+    margin-bottom: var(--space-lg);
 }
 
 .playback-btn {
-    padding: 4px 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
     border: 1px solid var(--border);
-    border-radius: 4px;
-    background: white;
+    border-radius: var(--radius-sm);
+    background: var(--card-bg);
     cursor: pointer;
-    font-size: 14px;
-    transition: background 0.2s;
+    font-size: 16px;
+    transition: all var(--transition);
+    color: var(--text);
 }
 
 .playback-btn:hover {
-    background: #f0f2f5;
-}
-
-.playback-btn:active {
-    background: #e1e4e8;
+    background: var(--bg);
+    border-color: var(--accent);
 }
 
 .playback-btn.playing {
-    background: #e74c3c;
+    background: var(--danger);
+    border-color: var(--danger);
     color: white;
-    border-color: #c0392b;
 }
 
 .playback-slider {
@@ -369,46 +794,341 @@ body {
     min-width: 200px;
 }
 
-/* Playback mode indicator */
+.playback-time {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--text-muted);
+    min-width: 80px;
+    text-align: center;
+}
+
 .playback-indicator {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 4px 10px;
-    background: #fff3cd;
-    border: 1px solid #ffc107;
-    border-radius: 4px;
-    font-size: 12px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 11px;
     font-weight: 600;
-    color: #856404;
+    text-transform: uppercase;
+}
+
+.playback-indicator.historical {
+    background: rgba(245, 158, 11, 0.1);
+    color: var(--warning);
 }
 
 .playback-indicator.live {
-    background: #d4edda;
-    border-color: #28a745;
-    color: #155724;
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--success);
 }
 
-/* Hide playback controls by default */
+.playback-indicator.live::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    background: var(--success);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
 #playback-controls-container {
     display: none;
     margin-bottom: var(--space-md);
 }
 
-/* ============================================================================
-   RESPONSIVE ADJUSTMENTS
-   ============================================================================ */
+/* =============================================================================
+   LEAFLET MAP - MIPO BAY, ULSAN
+   ============================================================================= */
+
+.leaflet-map-container {
+    width: 100%;
+    height: 100%;
+    min-height: 750px;
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+/* Facility labels */
+.facility-label {
+    background: rgba(255, 255, 255, 0.95) !important;
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius-sm) !important;
+    padding: 6px 10px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    color: var(--hhi-blue) !important;
+    box-shadow: var(--shadow) !important;
+    white-space: nowrap !important;
+}
+
+/* Tooltips */
+.leaflet-tooltip {
+    background: rgba(255, 255, 255, 0.98);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    font-size: 13px;
+    line-height: 1.5;
+    box-shadow: var(--shadow-md);
+    max-width: 280px;
+}
+
+.leaflet-tooltip b,
+.leaflet-tooltip strong {
+    color: var(--hhi-blue);
+}
+
+.leaflet-tooltip .progress-bar {
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    margin-top: var(--space-xs);
+    overflow: hidden;
+}
+
+.leaflet-tooltip .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent) 0%, var(--success) 100%);
+}
+
+/* Leaflet controls */
+.leaflet-control-zoom a {
+    background: var(--card-bg) !important;
+    color: var(--hhi-blue) !important;
+    border: 1px solid var(--border) !important;
+    width: 32px !important;
+    height: 32px !important;
+    line-height: 30px !important;
+    font-size: 18px !important;
+    border-radius: var(--radius-sm) !important;
+}
+
+.leaflet-control-zoom a:hover {
+    background: var(--bg) !important;
+}
+
+.leaflet-control-zoom {
+    border: none !important;
+    box-shadow: var(--shadow) !important;
+}
+
+.leaflet-control-attribution {
+    font-size: 10px;
+    background: rgba(255, 255, 255, 0.9) !important;
+    backdrop-filter: blur(5px);
+    padding: 4px 8px !important;
+    border-radius: var(--radius-sm) 0 0 0;
+}
+
+/* Interactive elements */
+.leaflet-interactive:hover {
+    stroke-width: 3 !important;
+    cursor: pointer;
+}
+
+.leaflet-interactive.leaflet-polygon:hover {
+    fill-opacity: 0.6 !important;
+}
+
+/* Layer control */
+.leaflet-control-layers {
+    background: var(--card-bg) !important;
+    border-radius: var(--radius) !important;
+    box-shadow: var(--shadow-md) !important;
+    border: none !important;
+}
+
+.leaflet-control-layers-list {
+    padding: var(--space-sm) !important;
+}
+
+/* Zone label tooltips - small and subtle */
+.zone-label-tooltip {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+
+.zone-label-tooltip::before {
+    display: none !important;
+}
+
+/* Playback controls */
+.playback-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background-color: #f1f5f9;
+    border-radius: 6px;
+    margin-bottom: 12px;
+    border: 1px solid #e2e8f0;
+}
+
+.playback-controls button {
+    transition: all var(--transition-fast);
+}
+
+.playback-controls button:hover {
+    background-color: #e2e8f0 !important;
+    transform: scale(1.05);
+}
+
+.playback-controls button:active {
+    transform: scale(0.98);
+}
+
+/* Slider styling */
+.playback-controls .rc-slider {
+    height: 14px;
+}
+
+.playback-controls .rc-slider-track {
+    background: var(--hhi-teal) !important;
+    height: 6px;
+}
+
+.playback-controls .rc-slider-rail {
+    background: #e2e8f0 !important;
+    height: 6px;
+}
+
+.playback-controls .rc-slider-handle {
+    width: 18px !important;
+    height: 18px !important;
+    background: var(--hhi-blue) !important;
+    border: 3px solid white !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    margin-top: -6px !important;
+}
+
+.playback-controls .rc-slider-handle:hover,
+.playback-controls .rc-slider-handle:active,
+.playback-controls .rc-slider-handle:focus {
+    background: var(--hhi-teal) !important;
+    box-shadow: 0 0 0 4px rgba(0, 117, 143, 0.2);
+}
+
+/* =============================================================================
+   EMPTY STATE
+   ============================================================================= */
+
+.empty-state {
+    text-align: center;
+    padding: var(--space-2xl) var(--space-xl);
+    color: var(--text-muted);
+}
+
+.empty-state-icon {
+    font-size: 48px;
+    margin-bottom: var(--space-md);
+    opacity: 0.5;
+}
+
+.empty-state h3 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: var(--space-sm);
+}
+
+.empty-state p {
+    font-size: 14px;
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+/* =============================================================================
+   FOOTER
+   ============================================================================= */
+
+.app-footer {
+    text-align: center;
+    padding: var(--space-xl) 0;
+    color: var(--text-muted);
+    font-size: 12px;
+    border-top: 1px solid var(--border);
+    margin-top: var(--space-2xl);
+}
+
+.app-footer a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.app-footer a:hover {
+    text-decoration: underline;
+}
+
+/* =============================================================================
+   LOADING STATES
+   ============================================================================= */
+
+._dash-loading {
+    min-height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* =============================================================================
+   RESPONSIVE
+   ============================================================================= */
 
 @media (max-width: 1200px) {
-    .dual-map-container {
-        grid-template-columns: 1fr !important;
+    .app-container {
+        padding: var(--space-md);
+    }
+
+    .dock-grid {
+        grid-template-columns: repeat(3, 1fr);
     }
 }
 
 @media (max-width: 768px) {
+    .app-header {
+        padding: var(--space-md);
+        margin: calc(-1 * var(--space-md));
+        margin-bottom: var(--space-md);
+    }
+
+    .app-header h1 {
+        font-size: 22px;
+    }
+
+    .kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .dock-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
     .map-controls {
         flex-direction: column;
-        align-items: flex-start;
+        align-items: stretch;
     }
 
     .playback-controls {
@@ -419,5 +1139,20 @@ body {
         width: 100%;
         order: 10;
         margin-top: var(--space-sm);
+    }
+
+    .leaflet-map-container {
+        height: 400px;
+        min-height: 400px;
+    }
+}
+
+@media (max-width: 480px) {
+    .kpi-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .dock-grid {
+        grid-template-columns: 1fr;
     }
 }

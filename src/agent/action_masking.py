@@ -18,14 +18,23 @@ import torch
 # action_type 1 = dispatch crane: needs crane + lift heads
 # action_type 2 = maintenance: needs equipment head
 # action_type 3 = hold: no sub-heads needed
+# action_type 4 = place order: needs supplier + material heads
+# action_type 5 = assign worker: needs labor_pool + target_block heads
+# action_type 6 = transfer material: needs material + target_block heads
 ACTION_TYPE_TO_HEADS: Dict[int, List[str]] = {
     0: ["action_type", "spmt", "request"],
     1: ["action_type", "crane", "lift"],
     2: ["action_type", "equipment"],
     3: ["action_type"],
+    4: ["action_type", "supplier", "material"],
+    5: ["action_type", "labor_pool", "target_block"],
+    6: ["action_type", "material", "target_block"],
 }
 
-ALL_HEADS = ["action_type", "spmt", "request", "crane", "lift", "equipment"]
+ALL_HEADS = [
+    "action_type", "spmt", "request", "crane", "lift", "equipment",
+    "supplier", "material", "labor_pool", "target_block",
+]
 
 
 def to_torch_mask(mask: Dict[str, Any], device: str | torch.device = "cpu") -> Dict[str, torch.Tensor]:
@@ -38,24 +47,24 @@ def flatten_env_mask_to_policy_mask(
     n_spmts: int,
     n_cranes: int,
     max_requests: int,
+    n_suppliers: int = 0,
+    n_inventory: int = 0,
+    n_labor_pools: int = 0,
 ) -> Dict[str, np.ndarray]:
     """Convert environment mask format to per-head 1D boolean masks.
 
     The environment produces:
-      - action_type: (4,) bool
+      - action_type: (n_action_types,) bool
       - spmt_dispatch: (n_spmts, n_transport_requests) bool
       - crane_dispatch: (n_cranes, n_lift_requests) bool
       - maintenance: (n_spmts + n_cranes,) bool
+      - supplier_order: (n_suppliers, n_inventory) bool  [if enabled]
+      - labor_assign: (n_labor_pools,) bool  [if enabled]
+      - inventory_transfer: (n_inventory,) bool  [if enabled]
 
-    This function produces masks matching policy head output sizes:
-      - action_type: (4,)
-      - spmt: (n_spmts,) — True if SPMT has any valid dispatch
-      - request: (max_requests,) — True if request has any valid SPMT assignment
-      - crane: (n_cranes,) — True if crane has any valid dispatch
-      - lift: (max_requests,) — True if lift request has any valid crane
-      - equipment: (n_spmts + n_cranes,) — same as maintenance mask
+    This function produces masks matching policy head output sizes.
     """
-    at_mask = env_mask["action_type"]  # (4,)
+    at_mask = env_mask["action_type"]
 
     spmt_dispatch = env_mask["spmt_dispatch"]  # (n_spmts, n_requests)
     crane_dispatch = env_mask["crane_dispatch"]  # (n_cranes, n_lifts)
@@ -86,7 +95,7 @@ def flatten_env_mask_to_policy_mask(
     # Equipment head: same as maintenance mask
     equipment_mask = np.array(maint_mask, dtype=bool)
 
-    return {
+    result = {
         "action_type": np.array(at_mask, dtype=bool),
         "spmt": spmt_mask,
         "request": request_mask,
@@ -94,6 +103,40 @@ def flatten_env_mask_to_policy_mask(
         "lift": lift_mask,
         "equipment": equipment_mask,
     }
+
+    # Supply chain masks
+    n_sup = max(n_suppliers, 1)
+    n_inv = max(n_inventory, 1)
+    n_lp = max(n_labor_pools, 1)
+
+    supplier_order = env_mask.get("supplier_order")
+    if supplier_order is not None and supplier_order.size > 0:
+        result["supplier"] = np.zeros(n_sup, dtype=bool)
+        result["supplier"][:supplier_order.shape[0]] = supplier_order.any(axis=1)
+        result["material"] = np.zeros(n_inv, dtype=bool)
+        result["material"][:supplier_order.shape[1]] = supplier_order.any(axis=0)
+    else:
+        result["supplier"] = np.ones(n_sup, dtype=bool)
+        result["material"] = np.ones(n_inv, dtype=bool)
+
+    labor_assign = env_mask.get("labor_assign")
+    if labor_assign is not None and labor_assign.size > 0:
+        result["labor_pool"] = np.zeros(n_lp, dtype=bool)
+        result["labor_pool"][:len(labor_assign)] = labor_assign
+    else:
+        result["labor_pool"] = np.ones(n_lp, dtype=bool)
+
+    # target_block: allow all for now; action execution validates
+    result["target_block"] = np.ones(max_requests, dtype=bool)
+
+    inv_transfer = env_mask.get("inventory_transfer")
+    if inv_transfer is not None and inv_transfer.size > 0:
+        # For transfer: material head already set from supplier_order or this
+        inv_mask = np.zeros(n_inv, dtype=bool)
+        inv_mask[:len(inv_transfer)] = inv_transfer
+        result["material"] = result["material"] | inv_mask
+
+    return result
 
 
 def head_relevance_mask(action_types: torch.Tensor, head_name: str) -> torch.Tensor:

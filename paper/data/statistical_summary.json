@@ -1,0 +1,37 @@
+{
+  "expert": {
+    "mean_throughput": 0.1119,
+    "std_throughput": 0.0011357816691600557,
+    "ci_95": [
+      0.11104356112057823,
+      0.11275643887942177
+    ],
+    "mean_blocks": 111.9,
+    "ci_blocks": [
+      111.04356112057823,
+      112.75643887942178
+    ]
+  },
+  "dagger_sweep": {
+    "mean_throughput": 0.08957272727272728,
+    "std_throughput": 0.0158475745726187,
+    "ci_95": [
+      0.07840653618844363,
+      0.10073891835701092
+    ],
+    "best_vs_expert": 100.5,
+    "n_trials": 11
+  },
+  "comparisons": {
+    "dagger_vs_ppo": {
+      "improvement_pct": 2697.5,
+      "dagger": 0.1119,
+      "ppo": 0.004
+    },
+    "dagger_vs_sac": {
+      "improvement_pct": 459.5,
+      "dagger": 0.1119,
+      "sac": 0.02
+    }
+  }
+}

@@ -18,7 +18,7 @@ from typing import Dict, Any
 import numpy as np
 import torch
 
-from simulation.environment import ShipyardEnv
+from simulation.shipyard_env import HHIShipyardEnv
 from agent.gnn_encoder import HeterogeneousGNNEncoder, SimpleGNNEncoder
 from agent.policy import ActorCriticPolicy
 from agent.ppo import PPOTrainer
@@ -59,7 +59,7 @@ def run_ablation(
         curriculum = CurriculumScheduler.from_config(cfg["curriculum"])
         cfg = curriculum.get_config(cfg, 0)
 
-    env = ShipyardEnv(cfg)
+    env = HHIShipyardEnv(cfg)
     hidden_dim = 128
 
     if encoder_type == "gnn":
@@ -81,7 +81,7 @@ def run_ablation(
         state_dim=state_dim,
         n_action_types=4,
         n_spmts=env.n_spmts,
-        n_cranes=env.n_cranes,
+        n_cranes=getattr(env, 'n_goliath_cranes', getattr(env, 'n_cranes', 2)),
         max_requests=env.n_blocks,
         hidden_dim=256,
     )
@@ -92,7 +92,7 @@ def run_ablation(
     for epoch in range(epochs):
         if curriculum is not None:
             epoch_cfg = curriculum.get_config(base_cfg, epoch)
-            env = ShipyardEnv(epoch_cfg)
+            env = HHIShipyardEnv(epoch_cfg)
         rollout = trainer.collect_rollout(env, steps)
         trainer.update(rollout)
 

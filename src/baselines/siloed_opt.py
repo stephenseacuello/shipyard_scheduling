@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Dict, Any, List
 
-from shipyard_scheduling.simulation.entities import SPMTStatus, CraneStatus
+from simulation.entities import SPMTStatus, GoliathCraneStatus as CraneStatus
 
 
 class _ProductionSequencer:

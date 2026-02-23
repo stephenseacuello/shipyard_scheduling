@@ -6,4 +6,9 @@ inherit_from: default.yaml
 n_blocks: 50
 n_spmts: 6
 n_cranes: 2
-max_time: 5000
+
+# HHI-specific overrides
+n_ships: 1
+n_blocks_per_ship: 50
+
+max_time: 2000

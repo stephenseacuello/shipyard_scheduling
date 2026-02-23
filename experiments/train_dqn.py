@@ -33,7 +33,7 @@ try:
 except ImportError:
     WANDB_AVAILABLE = False
 
-from simulation.environment import ShipyardEnv
+from simulation.shipyard_env import HHIShipyardEnv
 from agent.gnn_encoder import HeterogeneousGNNEncoder, create_encoder
 from agent.dqn import DoubleDQNAgent
 from utils.metrics import compute_kpis
@@ -63,7 +63,7 @@ def train_dqn(args: argparse.Namespace) -> Dict[str, float]:
     config = load_config(args.config)
 
     # Create environment
-    env = ShipyardEnv(config)
+    env = HHIShipyardEnv(config)
 
     # Create encoder
     encoder = create_encoder(
@@ -80,7 +80,7 @@ def train_dqn(args: argparse.Namespace) -> Dict[str, float]:
         encoder=encoder,
         state_dim=args.hidden_dim * 4,  # 4 node types
         n_spmts=env.n_spmts,
-        n_cranes=env.n_cranes,
+        n_cranes=getattr(env, 'n_goliath_cranes', getattr(env, 'n_cranes', 2)),
         max_requests=env.n_blocks,
         lr=args.lr,
         gamma=args.gamma,
@@ -208,7 +208,7 @@ def train_dqn(args: argparse.Namespace) -> Dict[str, float]:
 
 def evaluate_agent(
     agent: DoubleDQNAgent,
-    env: ShipyardEnv,
+    env: HHIShipyardEnv,
     n_episodes: int = 10,
 ) -> Dict[str, float]:
     """Evaluate trained agent.
@@ -305,7 +305,7 @@ def main():
         # Evaluation mode
         print(f"Loading checkpoint: {args.checkpoint}")
         config = load_config(args.config)
-        env = ShipyardEnv(config)
+        env = HHIShipyardEnv(config)
 
         encoder = create_encoder(
             encoder_type=args.encoder,
@@ -320,7 +320,7 @@ def main():
             encoder=encoder,
             state_dim=args.hidden_dim * 4,
             n_spmts=env.n_spmts,
-            n_cranes=env.n_cranes,
+            n_cranes=getattr(env, 'n_goliath_cranes', getattr(env, 'n_cranes', 2)),
             max_requests=env.n_blocks,
             device=args.device,
         )

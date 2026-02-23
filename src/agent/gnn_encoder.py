@@ -25,7 +25,7 @@ from torch_geometric.data import HeteroData
 
 
 # Edge types used in the shipyard heterogeneous graph
-EDGE_TYPES = [
+BASE_EDGE_TYPES = [
     ("block", "needs_transport", "spmt"),
     ("spmt", "can_transport", "block"),
     ("block", "needs_lift", "crane"),
@@ -36,8 +36,22 @@ EDGE_TYPES = [
     ("crane", "at", "facility"),
 ]
 
+# Additional edge types for supply chain extension
+SUPPLY_CHAIN_EDGE_TYPES = [
+    ("block", "requires_material", "inventory"),
+    ("inventory", "supplied_by", "supplier"),
+    ("supplier", "delivers_to", "facility"),
+    ("block", "requires_labor", "labor"),
+    ("labor", "works_at", "facility"),
+    ("inventory", "stored_at", "facility"),
+]
+
+EDGE_TYPES = BASE_EDGE_TYPES  # Default for backward compat
+
 # Node types
-NODE_TYPES = ["block", "spmt", "crane", "facility"]
+BASE_NODE_TYPES = ["block", "spmt", "crane", "facility"]
+SUPPLY_CHAIN_NODE_TYPES = ["supplier", "inventory", "labor"]
+NODE_TYPES = BASE_NODE_TYPES  # Default for backward compat
 
 
 class HeterogeneousGNNEncoder(nn.Module):
@@ -53,19 +67,42 @@ class HeterogeneousGNNEncoder(nn.Module):
         num_layers: int = 2,
         num_heads: int = 4,
         dropout: float = 0.1,
+        supplier_dim: int = 0,
+        inventory_dim: int = 0,
+        labor_dim: int = 0,
     ) -> None:
         super().__init__()
+        self.enable_supply_chain = (supplier_dim > 0 or inventory_dim > 0 or labor_dim > 0)
+
+        # Determine active node/edge types
+        self.node_types = list(BASE_NODE_TYPES)
+        edge_types = list(BASE_EDGE_TYPES)
+        if self.enable_supply_chain:
+            if supplier_dim > 0:
+                self.node_types.append("supplier")
+            if inventory_dim > 0:
+                self.node_types.append("inventory")
+            if labor_dim > 0:
+                self.node_types.append("labor")
+            edge_types = edge_types + SUPPLY_CHAIN_EDGE_TYPES
+
         # Input projections
         self.block_proj = nn.Linear(block_dim, hidden_dim)
         self.spmt_proj = nn.Linear(spmt_dim, hidden_dim)
         self.crane_proj = nn.Linear(crane_dim, hidden_dim)
         self.facility_proj = nn.Linear(facility_dim, hidden_dim)
+
+        # Optional supply chain projections
+        self.supplier_proj = nn.Linear(supplier_dim, hidden_dim) if supplier_dim > 0 else None
+        self.inventory_proj = nn.Linear(inventory_dim, hidden_dim) if inventory_dim > 0 else None
+        self.labor_proj = nn.Linear(labor_dim, hidden_dim) if labor_dim > 0 else None
+
         # Message passing layers (each layer gets its own set of GATConv modules)
         self.conv_layers = nn.ModuleList()
         for _ in range(num_layers):
             relations = {
                 et: GATConv(hidden_dim, hidden_dim // num_heads, heads=num_heads, dropout=dropout, add_self_loops=False)
-                for et in EDGE_TYPES
+                for et in edge_types
             }
             self.conv_layers.append(HeteroConv(relations, aggr="mean"))
         # Layer norms
@@ -79,6 +116,13 @@ class HeterogeneousGNNEncoder(nn.Module):
             "crane": self.crane_proj(data["crane"].x),
             "facility": self.facility_proj(data["facility"].x),
         }
+        if self.supplier_proj is not None and "supplier" in data.node_types:
+            x_dict["supplier"] = self.supplier_proj(data["supplier"].x)
+        if self.inventory_proj is not None and "inventory" in data.node_types:
+            x_dict["inventory"] = self.inventory_proj(data["inventory"].x)
+        if self.labor_proj is not None and "labor" in data.node_types:
+            x_dict["labor"] = self.labor_proj(data["labor"].x)
+
         # Message passing
         for conv, norm in zip(self.conv_layers, self.norms):
             x_dict_new = conv(x_dict, data.edge_index_dict)
@@ -89,11 +133,13 @@ class HeterogeneousGNNEncoder(nn.Module):
             }
         # Global pooling: average per node type then concatenate
         pooled = []
-        for node_type in NODE_TYPES:
-            if data[node_type].x.shape[0] > 0:
+        for node_type in self.node_types:
+            if node_type in x_dict and node_type in data.node_types and data[node_type].x.shape[0] > 0:
                 pooled.append(global_mean_pool(x_dict[node_type], data[node_type].batch))
+            elif node_type in x_dict:
+                pooled.append(torch.zeros((1, x_dict[node_type].shape[1]), device=next(iter(x_dict.values())).device))
             else:
-                pooled.append(torch.zeros((1, x_dict[node_type].shape[1]), device=x_dict[node_type].device))
+                pooled.append(torch.zeros((1, self.block_proj.out_features), device=next(iter(x_dict.values())).device))
         return torch.cat(pooled, dim=-1)
 
 
@@ -744,6 +790,247 @@ class SimpleGNNEncoder(nn.Module):
         return global_mean_pool(x, batch)
 
 
+class EdgeAwareGNNEncoder(nn.Module):
+    """GNN encoder with edge features (travel time, capacity, urgency).
+
+    Extends HeterogeneousGNNEncoder to incorporate edge attributes
+    in message passing, providing richer information flow.
+    """
+
+    def __init__(
+        self,
+        block_dim: int = 8,
+        spmt_dim: int = 10,
+        crane_dim: int = 7,
+        facility_dim: int = 3,
+        edge_dim: int = 3,  # travel_time, capacity_ratio, urgency
+        hidden_dim: int = 128,
+        num_layers: int = 2,
+        num_heads: int = 4,
+        dropout: float = 0.1,
+    ) -> None:
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.edge_dim = edge_dim
+
+        # Input projections
+        self.block_proj = nn.Linear(block_dim, hidden_dim)
+        self.spmt_proj = nn.Linear(spmt_dim, hidden_dim)
+        self.crane_proj = nn.Linear(crane_dim, hidden_dim)
+        self.facility_proj = nn.Linear(facility_dim, hidden_dim)
+
+        # Edge feature encoder
+        self.edge_encoder = nn.Sequential(
+            nn.Linear(edge_dim, hidden_dim // 2),
+            nn.ReLU(),
+            nn.Linear(hidden_dim // 2, hidden_dim),
+        )
+
+        # Message passing with edge features
+        self.conv_layers = nn.ModuleList()
+        for _ in range(num_layers):
+            relations = {}
+            for et in EDGE_TYPES:
+                # Use edge_dim parameter for edge features
+                relations[et] = GATConv(
+                    hidden_dim, hidden_dim // num_heads,
+                    heads=num_heads, dropout=dropout,
+                    add_self_loops=False, edge_dim=hidden_dim
+                )
+            self.conv_layers.append(HeteroConv(relations, aggr="mean"))
+
+        self.norms = nn.ModuleList([nn.LayerNorm(hidden_dim) for _ in range(num_layers)])
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, data: HeteroData) -> torch.Tensor:
+        """Forward pass with edge features."""
+        x_dict = {
+            "block": self.block_proj(data["block"].x),
+            "spmt": self.spmt_proj(data["spmt"].x),
+            "crane": self.crane_proj(data["crane"].x),
+            "facility": self.facility_proj(data["facility"].x),
+        }
+
+        # Encode edge attributes if present
+        edge_attr_dict = {}
+        for et in EDGE_TYPES:
+            if hasattr(data[et], "edge_attr") and data[et].edge_attr is not None:
+                edge_attr_dict[et] = self.edge_encoder(data[et].edge_attr)
+            else:
+                # Create dummy edge attributes if not provided
+                n_edges = data[et].edge_index.size(1) if hasattr(data[et], "edge_index") else 0
+                if n_edges > 0:
+                    edge_attr_dict[et] = torch.zeros(n_edges, self.hidden_dim, device=x_dict["block"].device)
+
+        # Message passing with edge attributes
+        for conv, norm in zip(self.conv_layers, self.norms):
+            x_dict_new = conv(x_dict, data.edge_index_dict, edge_attr_dict)
+            x_dict = {
+                k: norm(self.dropout(F.relu(x_dict_new.get(k, x_dict[k]))) + x_dict[k])
+                for k in x_dict
+            }
+
+        # Global pooling
+        pooled = []
+        for node_type in NODE_TYPES:
+            if data[node_type].x.shape[0] > 0:
+                pooled.append(global_mean_pool(x_dict[node_type], data[node_type].batch))
+            else:
+                pooled.append(torch.zeros((1, self.hidden_dim), device=x_dict[node_type].device))
+
+        return torch.cat(pooled, dim=-1)
+
+
+class HierarchicalPooling(nn.Module):
+    """Two-level pooling: node -> zone -> global.
+
+    Groups nodes by facility zone (steel_processing, panel_assembly,
+    block_assembly, pre_erection) before global aggregation.
+    """
+
+    def __init__(
+        self,
+        hidden_dim: int = 128,
+        n_zones: int = 4,
+        use_attention: bool = True,
+    ):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.n_zones = n_zones
+        self.use_attention = use_attention
+
+        # Zone-level attention
+        if use_attention:
+            self.zone_attention = nn.MultiheadAttention(
+                embed_dim=hidden_dim,
+                num_heads=4,
+                batch_first=True,
+            )
+
+        # Final projection
+        self.output_proj = nn.Linear(hidden_dim * n_zones, hidden_dim)
+
+    def forward(
+        self,
+        node_features: Dict[str, torch.Tensor],
+        zone_assignments: Optional[Dict[str, torch.Tensor]] = None,
+    ) -> torch.Tensor:
+        """Hierarchical pooling.
+
+        Args:
+            node_features: Per-type node features {type: [n_nodes, hidden_dim]}.
+            zone_assignments: Zone index for each node {type: [n_nodes]}.
+
+        Returns:
+            Pooled representation [batch, hidden_dim].
+        """
+        batch_size = 1  # Assume single graph for now
+
+        # Simple version: pool blocks by stage (as proxy for zone)
+        block_features = node_features.get("block", None)
+        if block_features is None or block_features.size(0) == 0:
+            return torch.zeros(batch_size, self.hidden_dim, device=next(iter(node_features.values())).device)
+
+        # If no zone assignments, use uniform distribution
+        if zone_assignments is None:
+            # Divide blocks evenly into zones
+            n_blocks = block_features.size(0)
+            zone_assignments = {
+                "block": torch.arange(n_blocks, device=block_features.device) % self.n_zones
+            }
+
+        # Pool nodes to zones
+        zone_features = []
+        for zone_idx in range(self.n_zones):
+            mask = zone_assignments["block"] == zone_idx
+            if mask.any():
+                zone_pool = block_features[mask].mean(dim=0)
+            else:
+                zone_pool = torch.zeros(self.hidden_dim, device=block_features.device)
+            zone_features.append(zone_pool)
+
+        zone_stack = torch.stack(zone_features).unsqueeze(0)  # [1, n_zones, hidden_dim]
+
+        # Zone-level attention
+        if self.use_attention:
+            zone_attended, _ = self.zone_attention(zone_stack, zone_stack, zone_stack)
+            zone_stack = zone_attended
+
+        # Flatten and project
+        zone_flat = zone_stack.reshape(batch_size, -1)
+        return self.output_proj(zone_flat)
+
+
+class TemporalAttention(nn.Module):
+    """Time-aware attention mechanism for scheduling graphs.
+
+    Incorporates temporal features (due dates, processing times)
+    into the attention computation.
+    """
+
+    def __init__(
+        self,
+        hidden_dim: int = 128,
+        time_encoding_dim: int = 16,
+        num_heads: int = 4,
+    ):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.time_encoding_dim = time_encoding_dim
+
+        # Time encoding
+        self.time_encoder = nn.Sequential(
+            nn.Linear(1, time_encoding_dim),
+            nn.ReLU(),
+            nn.Linear(time_encoding_dim, hidden_dim),
+        )
+
+        # Time-aware attention
+        self.query_proj = nn.Linear(hidden_dim * 2, hidden_dim)
+        self.key_proj = nn.Linear(hidden_dim * 2, hidden_dim)
+        self.value_proj = nn.Linear(hidden_dim, hidden_dim)
+
+        self.attention = nn.MultiheadAttention(
+            embed_dim=hidden_dim,
+            num_heads=num_heads,
+            batch_first=True,
+        )
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        time_features: torch.Tensor,
+    ) -> torch.Tensor:
+        """Compute time-aware attention.
+
+        Args:
+            x: Node features [n_nodes, hidden_dim].
+            time_features: Temporal features [n_nodes, 1] (e.g., time-to-due).
+
+        Returns:
+            Time-aware attended features [n_nodes, hidden_dim].
+        """
+        # Encode time
+        time_emb = self.time_encoder(time_features)
+
+        # Concatenate with features for Q, K
+        x_with_time = torch.cat([x, time_emb], dim=-1)
+
+        # Project
+        Q = self.query_proj(x_with_time)
+        K = self.key_proj(x_with_time)
+        V = self.value_proj(x)
+
+        # Attention
+        Q = Q.unsqueeze(0)
+        K = K.unsqueeze(0)
+        V = V.unsqueeze(0)
+
+        attended, _ = self.attention(Q, K, V)
+
+        return attended.squeeze(0)
+
+
 def create_encoder(
     encoder_type: str = "gat",
     block_dim: int = 8,
@@ -761,14 +1048,21 @@ def create_encoder(
     Args:
         encoder_type: One of 'gat', 'transformer', 'temporal'.
         **kwargs: Additional arguments passed to encoder constructor.
+            supplier_dim, inventory_dim, labor_dim: Feature dims for supply chain nodes (0=disabled).
 
     Returns:
         GNN encoder module.
     """
+    sc_kwargs = {
+        "supplier_dim": kwargs.get("supplier_dim", 0),
+        "inventory_dim": kwargs.get("inventory_dim", 0),
+        "labor_dim": kwargs.get("labor_dim", 0),
+    }
     if encoder_type == "gat":
         return HeterogeneousGNNEncoder(
             block_dim, spmt_dim, crane_dim, facility_dim,
-            hidden_dim, num_layers, num_heads, dropout
+            hidden_dim, num_layers, num_heads, dropout,
+            **sc_kwargs,
         )
     elif encoder_type == "transformer":
         return HeterogeneousGraphTransformer(
@@ -781,6 +1075,13 @@ def create_encoder(
         return TemporalGNNEncoder(
             block_dim, spmt_dim, crane_dim, facility_dim,
             hidden_dim, num_layers, num_heads, dropout
+        )
+    elif encoder_type == "edge_aware":
+        return EdgeAwareGNNEncoder(
+            block_dim, spmt_dim, crane_dim, facility_dim,
+            edge_dim=kwargs.get("edge_dim", 3),
+            hidden_dim=hidden_dim, num_layers=num_layers,
+            num_heads=num_heads, dropout=dropout
         )
     else:
         raise ValueError(f"Unknown encoder type: {encoder_type}")

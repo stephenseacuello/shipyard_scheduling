@@ -47,4 +47,7 @@ def test_encoder_and_policy():
         action_dist, value = policy.forward(state_emb)
     # Ensure outputs have correct shapes
     assert value.shape[-1] == 1
-    assert set(action_dist.keys()) == {"action_type", "spmt", "request", "crane", "lift", "equipment"}
+    assert set(action_dist.keys()) == {
+        "action_type", "spmt", "request", "crane", "lift", "equipment",
+        "supplier", "material", "labor_pool", "target_block",
+    }

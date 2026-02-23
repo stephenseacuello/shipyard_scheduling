@@ -17,13 +17,18 @@ from .action_masking import head_relevance_mask, ALL_HEADS
 
 
 def _apply_mask(logits: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
-    """Mask logits: set positions where mask is False to -1e9."""
+    """Mask logits: set positions where mask is False to a large negative value.
+
+    Uses -20.0 instead of -1e9 to allow some probability mass on masked actions,
+    enabling exploration while still making them unlikely. This helps prevent
+    entropy collapse where the policy becomes completely deterministic.
+    """
     if mask is None:
         return logits
     if mask.dtype != torch.bool:
         mask = mask.bool()
     # Broadcast: mask may be (head_size,) or (batch, head_size)
-    return logits.masked_fill(~mask, -1e9)
+    return logits.masked_fill(~mask, -20.0)
 
 
 class ActorCriticPolicy(nn.Module):
@@ -35,12 +40,19 @@ class ActorCriticPolicy(nn.Module):
         n_cranes: int = 1,
         max_requests: int = 1,
         hidden_dim: int = 256,
+        epsilon: float = 0.1,  # Epsilon for epsilon-greedy exploration
+        temperature: float = 1.0,  # Logit temperature (>1 = more exploration)
+        n_suppliers: int = 0,
+        n_inventory: int = 0,
+        n_labor_pools: int = 0,
     ) -> None:
         super().__init__()
         self.n_action_types = n_action_types
         self.n_spmts = n_spmts
         self.n_cranes = n_cranes
         self.max_requests = max_requests
+        self.epsilon = epsilon  # Probability of random action
+        self.temperature = temperature  # Logit scaling for exploration
         # Shared layers
         self.shared = nn.Sequential(
             nn.Linear(state_dim, hidden_dim),
@@ -55,6 +67,11 @@ class ActorCriticPolicy(nn.Module):
         self.crane_head = nn.Linear(hidden_dim, n_cranes)
         self.lift_head = nn.Linear(hidden_dim, max_requests)
         self.equipment_head = nn.Linear(hidden_dim, n_spmts + n_cranes)
+        # Supply chain heads (created even if size=1 for uniform interface)
+        self.supplier_head = nn.Linear(hidden_dim, max(n_suppliers, 1))
+        self.material_head = nn.Linear(hidden_dim, max(n_inventory, 1))
+        self.labor_pool_head = nn.Linear(hidden_dim, max(n_labor_pools, 1))
+        self.target_block_head = nn.Linear(hidden_dim, max(max_requests, 1))
         # Critic head
         self.critic = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim // 2),
@@ -74,6 +91,10 @@ class ActorCriticPolicy(nn.Module):
             "crane": self.crane_head(features),
             "lift": self.lift_head(features),
             "equipment": self.equipment_head(features),
+            "supplier": self.supplier_head(features),
+            "material": self.material_head(features),
+            "labor_pool": self.labor_pool_head(features),
+            "target_block": self.target_block_head(features),
         }
         # Apply per-head masks
         if mask is not None:
@@ -81,6 +102,9 @@ class ActorCriticPolicy(nn.Module):
                 m = mask.get(key)
                 if m is not None:
                     logits[key] = _apply_mask(logits[key], m)
+        # Apply temperature scaling to increase exploration (T>1 = more uniform)
+        if self.temperature != 1.0:
+            logits = {k: v / self.temperature for k, v in logits.items()}
         # Build distributions
         action_dist = {k: Categorical(logits=v) for k, v in logits.items()}
         value = self.critic(features)
@@ -131,7 +155,37 @@ class ActorCriticPolicy(nn.Module):
         if deterministic:
             action = {k: d.probs.argmax(dim=-1) for k, d in action_dist.items()}
         else:
-            action = {k: d.sample() for k, d in action_dist.items()}
+            # Epsilon-greedy exploration: with probability epsilon, sample uniformly
+            # from valid actions instead of from the learned distribution
+            if self.epsilon > 0 and torch.rand(1).item() < self.epsilon:
+                # Random action from valid options (respecting mask)
+                action = {}
+                for k, d in action_dist.items():
+                    # Sample uniformly from non-zero probability actions
+                    probs = d.probs
+                    if probs.dim() == 1:
+                        # Single sample case
+                        valid_mask = probs > 1e-8
+                        if valid_mask.any():
+                            uniform_probs = valid_mask.float() / valid_mask.sum()
+                            action[k] = torch.multinomial(uniform_probs, 1).squeeze(0)
+                        else:
+                            action[k] = d.sample()
+                    else:
+                        # Batch case - sample for each item in batch
+                        batch_size = probs.shape[0]
+                        samples = []
+                        for i in range(batch_size):
+                            p = probs[i]
+                            valid_mask = p > 1e-8
+                            if valid_mask.any():
+                                uniform_probs = valid_mask.float() / valid_mask.sum()
+                                samples.append(torch.multinomial(uniform_probs, 1).squeeze(0))
+                            else:
+                                samples.append(d.sample()[i])
+                        action[k] = torch.stack(samples)
+            else:
+                action = {k: d.sample() for k, d in action_dist.items()}
         log_prob = self._compute_log_prob(action_dist, action)
         return action, log_prob, value
 

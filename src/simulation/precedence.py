@@ -2,7 +2,7 @@
 
 Blocks must obey precedence relations specified by their `predecessors` lists.
 This module provides helper functions to check whether predecessors have
-completed their tasks or been placed on the dock before a dependent block
+completed their tasks or been erected in the dock before a dependent block
 may proceed.
 """
 
@@ -14,7 +14,7 @@ from .entities import Block, BlockStatus
 
 
 def is_predecessor_complete(block: Block, block_lookup: Dict[str, Block]) -> bool:
-    """Return True if all predecessors of `block` are placed on the dock.
+    """Return True if all predecessors of `block` have been erected in the dock.
 
     Parameters
     ----------
@@ -26,6 +26,6 @@ def is_predecessor_complete(block: Block, block_lookup: Dict[str, Block]) -> boo
     """
     for pred_id in block.predecessors:
         pred = block_lookup.get(pred_id)
-        if pred is None or pred.status != BlockStatus.PLACED_ON_DOCK:
+        if pred is None or pred.status != BlockStatus.ERECTED:
             return False
     return True

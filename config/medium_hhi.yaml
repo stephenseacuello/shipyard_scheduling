@@ -1,0 +1,9 @@
+# Medium HHI instance (2 ships, 400 blocks total)
+
+inherit_from: hhi_ulsan.yaml
+
+# Reduced scale for curriculum learning
+n_ships: 2
+n_blocks_per_ship: 100
+
+max_time: 15000

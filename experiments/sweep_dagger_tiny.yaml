@@ -1,0 +1,44 @@
+# Fast Wandb sweep for DAgger hyperparameter optimization on tiny instance
+# For quick feedback on hyperparameter impact
+
+program: experiments/train_dagger_sweep.py
+method: bayes
+metric:
+  name: dagger_vs_expert_percent
+  goal: maximize
+
+parameters:
+  # Core DAgger parameters to tune
+  lr:
+    distribution: log_uniform_values
+    min: 1e-4
+    max: 1e-2
+
+  hidden-dim:
+    values: [64, 128, 256]
+
+  iterations:
+    values: [3, 5, 8]
+
+  # Reduced settings for speed
+  init-episodes:
+    value: 10
+
+  dagger-episodes:
+    value: 5
+
+  train-epochs:
+    value: 10
+
+  beta-start:
+    value: 1.0
+
+  beta-end:
+    value: 0.1
+
+  # Use tiny instance for speed
+  config:
+    value: config/tiny_instance.yaml
+
+  seed:
+    value: 42

@@ -1,0 +1,73 @@
+% Reframed Introduction for AAAI 2027
+% Focus: Entropy Collapse in Masked Action Spaces
+% This can replace or augment Section 1 of main.tex
+
+%==============================================================================
+\section{Introduction}
+\label{sec:introduction}
+%==============================================================================
+
+Deep reinforcement learning (RL) has achieved remarkable success across diverse domains, from game playing to robotic control. However, a critical failure mode emerges when RL is applied to \textit{hierarchical scheduling problems} with constrained action spaces: \textbf{entropy collapse}. In this work, we identify, analyze, and address this phenomenon, demonstrating that imitation learning provides a principled solution where standard RL approaches fail.
+
+\subsection{The Problem: Entropy Collapse Under Action Masking}
+
+Many real-world scheduling problems involve \textit{action masking}---dynamically constraining the set of valid actions based on system state. In vehicle dispatching, only idle vehicles can be assigned. In job shop scheduling, only operations with satisfied precedence constraints are executable. In crane scheduling, only ready blocks can be lifted.
+
+When the number of valid actions $k(s)$ becomes small (often just 1-2 options), policy entropy is mathematically bounded:
+\begin{equation}
+H(\pi(\cdot|s)) \leq \log k(s)
+\end{equation}
+
+As training progresses, standard RL algorithms (PPO, SAC) converge to deterministic policies. Once entropy collapses, exploration ceases, gradients vanish for non-dominant actions, and the policy becomes trapped in suboptimal fixed points. We term this the \textbf{entropy collapse death spiral}.
+
+\subsection{Empirical Evidence}
+
+We validate entropy collapse across three scheduling domains:
+
+\begin{itemize}
+    \item \textbf{Shipyard block scheduling}: PPO entropy collapses from 2.27 to 0.00 nats by epoch 5, achieving only 0.4\% of expert throughput
+    \item \textbf{Job shop scheduling (JSSP)}: Entropy declines to $\sim$0.3 nats with degraded performance
+    \item \textbf{Vehicle routing (VRPTW)}: Entropy is bottlenecked at 0.02 nats from initialization due to extremely constrained action space
+\end{itemize}
+
+Standard mitigation strategies---entropy bonuses, softened masking, adaptive temperature tuning---delay but do not prevent collapse. The fundamental issue is that policy gradient methods require exploration, but exploration is impossible when few actions are valid.
+
+\subsection{The Solution: Imitation Learning}
+
+We demonstrate that \textbf{Dataset Aggregation (DAgger)} avoids entropy collapse entirely by sidestepping the exploration problem. Key advantages:
+
+\begin{enumerate}
+    \item \textbf{No exploration required}: Learning is supervised, using expert demonstrations
+    \item \textbf{Dense feedback}: Every state receives a correct action label
+    \item \textbf{Well-behaved gradients}: Cross-entropy loss maintains gradients regardless of action distribution
+\end{enumerate}
+
+Our validated experiments on HD Hyundai Heavy Industries (HHI) Ulsan shipyard---the world's largest shipbuilding facility---demonstrate that DAgger achieves \textbf{100.5\% of expert throughput}, compared to 0.4\% for PPO and 28.7\% for SAC.
+
+\subsection{Contributions}
+
+\begin{enumerate}
+    \item \textbf{Identification}: We identify entropy collapse as a fundamental failure mode of RL in masked action spaces, providing theoretical bounds on achievable entropy
+
+    \item \textbf{Multi-domain validation}: We demonstrate entropy collapse across three scheduling domains (shipyard, JSSP, VRPTW), confirming domain-independence
+
+    \item \textbf{Solution}: We show that DAgger achieves expert-level performance (100.5\%) where RL fails catastrophically ($<$1\%)
+
+    \item \textbf{Practical guidelines}: We provide hyperparameter recommendations (hidden\_dim=64, lr=0.008, 5 iterations) validated via Bayesian sweep
+
+    \item \textbf{Industrial-scale evaluation}: We validate on HHI Ulsan with 200 blocks, 10 docks, 9 Goliath cranes, demonstrating real-time feasibility (214 kHz inference)
+\end{enumerate}
+
+\subsection{Paper Organization}
+
+Section~\ref{sec:related} reviews related work on scheduling, RL, and imitation learning. Section~\ref{sec:methodology} presents our theoretical analysis of entropy bounds and the DAgger approach. Section~\ref{sec:domains} describes the three scheduling domains. Section~\ref{sec:experiments} presents validated experimental results with statistical analysis. Section~\ref{sec:discussion} discusses implications and limitations. Section~\ref{sec:conclusions} concludes.
+
+%==============================================================================
+% Alternative abstract for entropy-focused paper
+%==============================================================================
+
+\begin{abstract}
+Reinforcement learning (RL) has achieved impressive results across many domains, yet suffers a critical failure mode in \textit{hierarchical scheduling problems with action masking}: \textbf{entropy collapse}. When the set of valid actions is dynamically constrained to few options, policy entropy is mathematically bounded, gradients vanish, and RL algorithms converge to deterministic, suboptimal policies. We identify this phenomenon, provide theoretical analysis of entropy bounds under masking, and validate across three domains: shipyard scheduling (PPO entropy: 2.27 $\to$ 0.00 by epoch 5), job shop scheduling, and vehicle routing with time windows.
+
+We demonstrate that imitation learning via Dataset Aggregation (DAgger) avoids entropy collapse entirely, achieving \textbf{100.5\% of expert throughput} on HD Hyundai Heavy Industries Ulsan shipyard (the world's largest), compared to 0.4\% for PPO and 28.7\% for SAC. Our Bayesian hyperparameter sweep (11 trials) identifies optimal configurations: hidden\_dim=64, lr=0.008, 5 iterations. The framework achieves 214 kHz inference throughput, enabling real-time deployment. We provide theoretical bounds, multi-domain validation, and practical guidelines for practitioners facing hierarchical scheduling with constrained action spaces.
+\end{abstract}

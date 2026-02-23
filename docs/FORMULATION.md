@@ -119,8 +119,10 @@ $$R(s, a, s') = R_{comp} + R_{tardy} + R_{breakdown} + R_{maint} + R_{empty}$$
 1. **Completion Reward:**
 $$R_{comp} = w_{comp} \cdot \mathbb{1}[block\_placed\_on\_dock]$$
 
-2. **Tardiness Penalty:**
-$$R_{tardy} = -w_{tardy} \cdot \sum_{b \in B_{active}} \max(0, t - due_b) \cdot \Delta t$$
+2. **Tardiness Penalty (Incremental):**
+$$R_{tardy} = -w_{tardy} \cdot \sum_{b \in B_{active}} \mathbb{1}[t > due_b] \cdot \Delta t$$
+
+Note: We use incremental tardiness (adding $\Delta t$ per tardy block) rather than cumulative tardiness (adding $(t - due_b) \cdot \Delta t$). This prevents exponential reward explosion in long simulations.
 
 3. **Breakdown Penalty:**
 $$R_{breakdown} = -w_{breakdown} \cdot |\{e : H_e < H_{fail}\}|$$
@@ -249,8 +251,61 @@ subject to:
 - Capacity constraints
 - Equipment availability constraints
 
+## 9. Imitation Learning Approach (Recommended)
+
+### 9.1 Why Imitation Learning?
+
+**Problem:** Pure RL methods (PPO, SAC) suffer from **entropy collapse** in this hierarchical action space:
+- Action masking often leaves only 1-2 valid actions
+- Entropy $H(\pi) \to 0$ as policy becomes deterministic
+- Policy collapses to always choosing "HOLD" action
+- Zero throughput despite training
+
+**Solution:** DAgger (Dataset Aggregation) bypasses exploration entirely via supervised learning.
+
+### 9.2 DAgger Algorithm
+
+DAgger addresses the **distribution mismatch** problem in behavioral cloning:
+
+1. **Distribution Mismatch:** BC trains on expert states $\rho_{\pi^*}$ but tests on learner states $\rho_\pi$
+2. **DAgger Fix:** Iteratively collect expert labels on learner-visited states
+
+$$D_n = D_{n-1} \cup \{(s, \pi^*(s)) : s \sim \rho_{\pi_{n-1}}\}$$
+
+**Beta-Annealing Schedule:**
+$$\beta_n = \beta_1 - (\beta_1 - \beta_N) \cdot \frac{n}{N}$$
+
+where $\beta_n$ is the probability of using expert action at iteration $n$.
+
+### 9.3 Feature Normalization
+
+For stable imitation learning, we normalize GNN state embeddings using running statistics:
+
+$$z_{norm} = \frac{z - \mu}{\sigma + \epsilon}$$
+
+where $\mu, \sigma$ are updated online using Welford's algorithm.
+
+### 9.4 Ensemble for Robustness
+
+Train $K$ DAgger policies with different random seeds and combine via majority voting:
+
+$$a^* = \arg\max_a \sum_{k=1}^{K} \mathbb{1}[\pi_k(s) = a]$$
+
+### 9.5 Empirical Results
+
+| Method | Throughput | vs Expert |
+|--------|------------|-----------|
+| DAgger | 0.072 | **103.2%** |
+| DAgger Ensemble | 0.074 | **~106%** |
+| Pure BC | 0.063 | 86.5% |
+| PPO | 0.000 | 0% |
+| SAC | 0.020 | 28.7% |
+
+DAgger **exceeds expert performance** by learning to recover from its own mistakes.
+
 ## References
 
 - Schulman, J., et al. (2017). "Proximal Policy Optimization Algorithms." arXiv:1707.06347.
 - Kipf, T. N., & Welling, M. (2017). "Semi-Supervised Classification with Graph Convolutional Networks." ICLR.
 - Si, X. S., et al. (2011). "Remaining useful life estimation – A review on the statistical data driven approaches." European Journal of Operational Research.
+- Ross, S., Gordon, G., & Bagnell, D. (2011). "A Reduction of Imitation Learning and Structured Prediction to No-Regret Online Learning." AISTATS.

@@ -1,0 +1,50 @@
+# Wandb sweep configuration for DAgger hyperparameter optimization
+# Usage: wandb sweep experiments/sweep_dagger.yaml && wandb agent <sweep_id>
+
+program: experiments/train_dagger.py
+method: bayes
+metric:
+  name: dagger_vs_expert_percent
+  goal: maximize
+
+parameters:
+  # DAgger-specific parameters
+  iterations:
+    values: [10, 15, 20, 25]
+
+  init-episodes:
+    values: [30, 50, 75, 100]
+
+  dagger-episodes:
+    values: [10, 15, 20, 30]
+
+  train-epochs:
+    values: [15, 20, 30, 40]
+
+  # Beta schedule (expert → policy annealing)
+  beta-start:
+    value: 1.0  # Always start with pure expert
+
+  beta-end:
+    distribution: uniform
+    min: 0.05
+    max: 0.2
+
+  # Learning rate
+  lr:
+    distribution: log_uniform_values
+    min: 1e-4
+    max: 1e-3
+
+  # Fixed parameters - use tiny for quick sweeps (~8 min/trial vs ~30 min for small)
+  config:
+    value: config/tiny_instance.yaml
+
+  seed:
+    values: [42]  # Single seed for speed; add more for final runs
+
+# Early termination for poorly performing runs
+early_terminate:
+  type: hyperband
+  min_iter: 5
+  eta: 3

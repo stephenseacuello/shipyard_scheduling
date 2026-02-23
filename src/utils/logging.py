@@ -16,8 +16,13 @@ def log_results_csv(filename: str, rows: List[Dict[str, Any]], fieldnames: List[
     if not rows:
         return
     if fieldnames is None:
-        fieldnames = list(rows[0].keys())
+        # Gather all unique keys from all rows to handle varying fields
+        all_keys = set()
+        for row in rows:
+            all_keys.update(row.keys())
+        # Sort keys for consistent column ordering
+        fieldnames = sorted(all_keys)
     with open(filename, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)

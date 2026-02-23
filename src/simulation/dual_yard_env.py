@@ -89,10 +89,10 @@ class DualShipyardEnv(gym.Env):
         self.n_quonset_facilities = len(dual_yard_config.get("quonset", {}).get("facilities", []))
         self.n_groton_facilities = len(dual_yard_config.get("groton", {}).get("facilities", []))
 
-        # Feature dimensions
+        # Feature dimensions (must match actual encoding)
         self.block_features = 10
-        self.spmt_features = 10
-        self.crane_features = 8
+        self.spmt_features = 9   # yard(1) + status(4) + load_ratio(1) + health(3)
+        self.crane_features = 8  # yard(1) + pos(1) + status(3) + health(2) + load(1)
         self.barge_features = 6
         self.facility_features = 4
 
@@ -510,11 +510,13 @@ class DualShipyardEnv(gym.Env):
         self._degrade_equipment(dt)
         self.sim_time += dt
 
-        # Tardiness accumulation
+        # Tardiness accumulation - only count the INCREMENT per step (dt for each tardy block)
+        # This prevents exponential blowup of cumulative tardiness
         for block in self.entities.get("blocks", []):
             if block.status != BlockStatus.PLACED_ON_DOCK:
-                tardiness = max(0.0, self.sim_time - block.due_date)
-                self.metrics["total_tardiness"] += tardiness * dt
+                if self.sim_time > block.due_date:
+                    # Block is tardy - add dt (1 unit of additional tardiness per step)
+                    self.metrics["total_tardiness"] += dt
 
     # ------------------------------------------------------------------
     # Action execution
@@ -957,3 +959,255 @@ class DualShipyardEnv(gym.Env):
             )
         except Exception:
             pass
+
+    def get_action_mask(self) -> Dict[str, np.ndarray]:
+        """Return a mask of valid actions for the current state."""
+        n_spmts = self.n_quonset_spmts + self.n_groton_spmts
+        n_cranes = self.n_quonset_cranes + self.n_groton_cranes
+
+        # Count total transport/lift requests across both yards
+        total_transport = len(self.transport_requests.get("quonset", [])) + len(self.transport_requests.get("groton", []))
+        total_lift = len(self.lift_requests.get("quonset", [])) + len(self.lift_requests.get("groton", []))
+
+        mask: Dict[str, Any] = {
+            "action_type": np.ones(6, dtype=bool),  # 6 action types for dual-yard
+            "spmt_dispatch": np.zeros((n_spmts, max(1, total_transport)), dtype=bool),
+            "crane_dispatch": np.zeros((n_cranes, max(1, total_lift)), dtype=bool),
+            "maintenance": np.zeros(n_spmts + n_cranes, dtype=bool),
+            "barge": np.zeros(max(1, self.n_barges), dtype=bool),
+        }
+
+        # SPMT dispatch mask (check same yard)
+        all_requests = self.transport_requests.get("quonset", []) + self.transport_requests.get("groton", [])
+        for i, spmt in enumerate(self.entities.get("spmts", [])):
+            spmt_yard = getattr(spmt, 'yard', 'quonset')
+            if spmt.status == SPMTStatus.IDLE and spmt.status != SPMTStatus.BROKEN_DOWN:
+                req_offset = 0
+                for yard in ["quonset", "groton"]:
+                    for j, req in enumerate(self.transport_requests.get(yard, [])):
+                        if spmt_yard == yard:
+                            block = self._get_block(req["block_id"])
+                            if block.weight <= spmt.capacity and spmt.get_min_health() > 20.0:
+                                mask["spmt_dispatch"][i, req_offset + j] = True
+                    req_offset += len(self.transport_requests.get(yard, []))
+
+        # Crane dispatch mask (check same yard)
+        placed_blocks = {b.id: b for b in self.entities.get("blocks", [])
+                         if b.status == BlockStatus.PLACED_ON_DOCK}
+        for i, crane in enumerate(self.entities.get("cranes", [])):
+            crane_yard = getattr(crane, 'yard', 'groton')
+            if crane.status == CraneStatus.IDLE and crane.status != CraneStatus.BROKEN_DOWN:
+                req_offset = 0
+                for yard in ["quonset", "groton"]:
+                    for j, req in enumerate(self.lift_requests.get(yard, [])):
+                        if crane_yard == yard:
+                            block = self._get_block(req["block_id"])
+                            if (block.weight <= crane.lift_capacity
+                                    and crane.get_min_health() > 20.0
+                                    and is_predecessor_complete(block, placed_blocks)):
+                                mask["crane_dispatch"][i, req_offset + j] = True
+                    req_offset += len(self.lift_requests.get(yard, []))
+
+        # Maintenance mask
+        for i, spmt in enumerate(self.entities.get("spmts", [])):
+            if (spmt.status == SPMTStatus.IDLE
+                    and spmt.status != SPMTStatus.BROKEN_DOWN
+                    and spmt.get_min_health() < 60.0):
+                mask["maintenance"][i] = True
+        for i, crane in enumerate(self.entities.get("cranes", [])):
+            idx = n_spmts + i
+            if (crane.status == CraneStatus.IDLE
+                    and crane.status != CraneStatus.BROKEN_DOWN
+                    and crane.get_min_health() < 60.0):
+                mask["maintenance"][idx] = True
+
+        # Barge mask
+        for i, barge in enumerate(self.entities.get("barges", [])):
+            if barge.status in {BargeStatus.IDLE, BargeStatus.LOADING}:
+                if self.barge_load_requests or barge.cargo:
+                    mask["barge"][i] = True
+            elif barge.status == BargeStatus.UNLOADING:
+                mask["barge"][i] = True
+
+        # Disable action types if no valid options
+        if mask["spmt_dispatch"].size == 0 or not mask["spmt_dispatch"].any():
+            mask["action_type"][0] = False
+        if mask["crane_dispatch"].size == 0 or not mask["crane_dispatch"].any():
+            mask["action_type"][1] = False
+        if not mask["maintenance"].any():
+            mask["action_type"][2] = False
+        # Action types 4 and 5 are barge operations
+        if not mask["barge"].any():
+            mask["action_type"][4] = False
+            mask["action_type"][5] = False
+
+        return mask
+
+    def get_graph_data(self) -> Dict:
+        """Construct a PyG heterogeneous graph representation of the state.
+
+        This method produces a dictionary compatible with the GNN encoder.
+        The graph includes block, spmt, crane, and facility nodes with
+        edges indicating potential interactions across both yards.
+        """
+        import torch
+        from torch_geometric.data import HeteroData
+
+        # Helper to convert encoded features to float list
+        stage_map = {s.value: float(i + 1) for i, s in enumerate(EBProductionStage)}
+
+        def _to_float_list(seq):
+            out = []
+            for v in seq:
+                if isinstance(v, (int, float)):
+                    out.append(float(v))
+                elif hasattr(v, 'item'):
+                    try:
+                        out.append(float(v.item()))
+                    except Exception:
+                        out.append(0.0)
+                else:
+                    s = str(v).lower()
+                    out.append(float(stage_map.get(s, 0.0)))
+            return out
+
+        data = HeteroData()
+
+        # Node features and batch indices
+        block_x = []
+        spmt_x = []
+        crane_x = []
+        fac_x = []
+        block_batch = []
+        spmt_batch = []
+        crane_batch = []
+        fac_batch = []
+
+        # Encode blocks
+        for b in self.entities.get("blocks", []):
+            block_x.append(torch.tensor(_to_float_list(self._encode_block(b)), dtype=torch.float))
+            block_batch.append(0)
+
+        # Encode SPMTs
+        for s in self.entities.get("spmts", []):
+            spmt_x.append(torch.tensor(_to_float_list(self._encode_spmt(s)), dtype=torch.float))
+            spmt_batch.append(0)
+
+        # Encode cranes
+        for c in self.entities.get("cranes", []):
+            crane_x.append(torch.tensor(_to_float_list(self._encode_crane(c)), dtype=torch.float))
+            crane_batch.append(0)
+
+        # Encode facilities from both yards
+        for yard in ["quonset", "groton"]:
+            for f in self._get_yard_facilities(yard):
+                fac_x.append(torch.tensor(self._encode_facility(yard, f["name"]), dtype=torch.float))
+                fac_batch.append(0)
+
+        # Assign node features to HeteroData
+        data["block"].x = torch.stack(block_x) if block_x else torch.empty((0, self.block_features))
+        data["block"].batch = torch.tensor(block_batch, dtype=torch.long)
+        data["spmt"].x = torch.stack(spmt_x) if spmt_x else torch.empty((0, self.spmt_features))
+        data["spmt"].batch = torch.tensor(spmt_batch, dtype=torch.long)
+        data["crane"].x = torch.stack(crane_x) if crane_x else torch.empty((0, self.crane_features))
+        data["crane"].batch = torch.tensor(crane_batch, dtype=torch.long)
+        data["facility"].x = torch.stack(fac_x) if fac_x else torch.empty((0, self.facility_features))
+        data["facility"].batch = torch.tensor(fac_batch, dtype=torch.long)
+
+        # Build facility name to index mapping (both yards)
+        fac_names = []
+        for yard in ["quonset", "groton"]:
+            for f in self._get_yard_facilities(yard):
+                fac_names.append(f"{yard}_{f['name']}")
+
+        # Edge indices: blocks <-> spmts (same yard)
+        block_to_spmt_src = []
+        block_to_spmt_dst = []
+        for i, b in enumerate(self.entities.get("blocks", [])):
+            block_yard = getattr(b, 'yard', 'quonset')
+            for j, s in enumerate(self.entities.get("spmts", [])):
+                spmt_yard = getattr(s, 'yard', 'quonset')
+                if block_yard == spmt_yard:
+                    block_to_spmt_src.append(i)
+                    block_to_spmt_dst.append(j)
+        spmt_to_block_src = block_to_spmt_dst.copy()
+        spmt_to_block_dst = block_to_spmt_src.copy()
+
+        # Blocks <-> cranes (same yard)
+        block_to_crane_src = []
+        block_to_crane_dst = []
+        for i, b in enumerate(self.entities.get("blocks", [])):
+            block_yard = getattr(b, 'yard', 'quonset')
+            for j, c in enumerate(self.entities.get("cranes", [])):
+                crane_yard = getattr(c, 'yard', 'groton')
+                if block_yard == crane_yard:
+                    block_to_crane_src.append(i)
+                    block_to_crane_dst.append(j)
+        crane_to_block_src = block_to_crane_dst.copy()
+        crane_to_block_dst = block_to_crane_src.copy()
+
+        # Blocks -> facilities (current location)
+        block_to_fac_src = []
+        block_to_fac_dst = []
+        for i, b in enumerate(self.entities.get("blocks", [])):
+            block_yard = getattr(b, 'yard', 'quonset')
+            fac_idx = 0
+            for idx, name in enumerate(fac_names):
+                if b.location and name.split('_', 1)[-1] in b.location and block_yard in name:
+                    fac_idx = idx
+                    break
+            block_to_fac_src.append(i)
+            block_to_fac_dst.append(fac_idx)
+
+        # Assign edges
+        if block_to_spmt_src:
+            data["block", "needs_transport", "spmt"].edge_index = torch.tensor(
+                [block_to_spmt_src, block_to_spmt_dst], dtype=torch.long
+            )
+        if spmt_to_block_src:
+            data["spmt", "can_transport", "block"].edge_index = torch.tensor(
+                [spmt_to_block_src, spmt_to_block_dst], dtype=torch.long
+            )
+        if block_to_crane_src:
+            data["block", "needs_lift", "crane"].edge_index = torch.tensor(
+                [block_to_crane_src, block_to_crane_dst], dtype=torch.long
+            )
+        if crane_to_block_src:
+            data["crane", "can_lift", "block"].edge_index = torch.tensor(
+                [crane_to_block_src, crane_to_block_dst], dtype=torch.long
+            )
+        if block_to_fac_src:
+            data["block", "at", "facility"].edge_index = torch.tensor(
+                [block_to_fac_src, block_to_fac_dst], dtype=torch.long
+            )
+
+        # Block precedence edges (block -> precedes -> block)
+        prec_src, prec_dst = [], []
+        block_id_to_idx = {b.id: i for i, b in enumerate(self.entities.get("blocks", []))}
+        for i, b in enumerate(self.entities.get("blocks", [])):
+            for pred_id in getattr(b, 'predecessors', []):
+                if pred_id in block_id_to_idx:
+                    prec_src.append(block_id_to_idx[pred_id])
+                    prec_dst.append(i)
+        if prec_src:
+            data["block", "precedes", "block"].edge_index = torch.tensor(
+                [prec_src, prec_dst], dtype=torch.long
+            )
+
+        # SPMT -> at -> facility edges
+        spmt_fac_src, spmt_fac_dst = [], []
+        for j, s in enumerate(self.entities.get("spmts", [])):
+            spmt_yard = getattr(s, 'yard', 'quonset')
+            fac_idx = 0
+            for idx, name in enumerate(fac_names):
+                if s.current_location and name.split('_', 1)[-1] in s.current_location and spmt_yard in name:
+                    fac_idx = idx
+                    break
+            spmt_fac_src.append(j)
+            spmt_fac_dst.append(fac_idx)
+        if spmt_fac_src:
+            data["spmt", "at", "facility"].edge_index = torch.tensor(
+                [spmt_fac_src, spmt_fac_dst], dtype=torch.long
+            )
+
+        return data

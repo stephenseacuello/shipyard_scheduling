@@ -159,6 +159,52 @@ obs, reward, terminated, truncated, info = env.step(action)
 | 2 | Trigger preventive maintenance |
 | 3 | Hold (no operation) |
 
+### HHI Ulsan Environment (`HHIShipyardEnv`)
+
+Production environment for HD Hyundai Heavy Industries LNG carrier production:
+
+```python
+from simulation.shipyard_env import HHIShipyardEnv
+import yaml
+
+# Load config
+with open("config/hhi_ulsan.yaml") as f:
+    cfg = yaml.safe_load(f)
+
+env = HHIShipyardEnv(cfg)
+obs, info = env.reset()
+
+# Run with expert scheduler
+from baselines.rule_based import RuleBasedScheduler
+expert = RuleBasedScheduler()
+
+for step in range(1000):
+    action = expert.decide(env)
+    obs, reward, done, trunc, info = env.step(action)
+    if done or trunc:
+        break
+```
+
+**HHI-Specific Features:**
+- 11-stage Korean shipbuilding workflow
+- 200 blocks per LNG carrier
+- 9 Goliath cranes (109m tall, 900-ton capacity)
+- 10 dry docks along Mipo Bay
+- Ship status transitions: `in_block_production` → `in_erection` → `afloat` → `in_quay_outfitting` → `in_sea_trials` → `delivered`
+
+**Running Live Simulation with Dashboard:**
+```bash
+# Terminal 1: Start dashboard
+python -m src.mes.app
+
+# Terminal 2: Run simulation with expert policy
+python experiments/live_simulation.py \
+    --config config/hhi_ulsan.yaml \
+    --policy expert \
+    --speed 10 \
+    --max-steps 5000
+```
+
 ### Dual-Yard Environment (`DualShipyardEnv`)
 
 Extended environment for Electric Boat dual-yard operations:
@@ -539,6 +585,26 @@ Add new tabs by modifying:
 - Disable auto-refresh when not needed
 - Reduce time range slider to limit data
 - Close playback mode when not in use
+
+**Database locked errors (sqlite3.OperationalError):**
+- The database now uses WAL mode with 30s timeout for concurrent access
+- If issues persist, restart both simulation and dashboard
+- Check for zombie processes: `ps aux | grep python | grep shipyard`
+
+**Massive negative reward in simulation:**
+- This was a known bug with tardiness accumulation (fixed)
+- Old code: accumulated `(sim_time - due_date) * dt` per block per step (exponential growth)
+- New code: accumulates `dt` per tardy block per step (linear growth)
+- Expected reward should be positive (+500 to +2000 for successful runs)
+
+**Ships not appearing on map:**
+- Ships are only visible on the map when status is: `in_erection`, `afloat`, `in_quay_outfitting`, `in_sea_trials`, or `delivered`
+- Ships in `in_block_production` status are not rendered (blocks are still being processed)
+- Check ship status in the Ships tab
+
+**DataTable column errors:**
+- If you see "Invalid argument 'data[0].X' passed into DataTable", the query columns don't match layout columns
+- Ensure SELECT aliases match the column `id` values in `layouts.py`
 
 ### Getting Help
 

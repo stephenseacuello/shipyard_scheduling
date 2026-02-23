@@ -430,8 +430,191 @@ class MultiObjectivePPO:
             # For hypernetwork, use weighted sum for reward
             return float(np.dot(weight, reward_vector))
 
+        elif self.scalarization == "constraint":
+            # Constraint-based: primary objective with constraints
+            return self._scalarize_with_constraints(reward_vector, weight)
+
+        elif self.scalarization == "hypervolume":
+            # Hypervolume-aware: reward based on HV contribution
+            return self._scalarize_with_hypervolume(reward_vector)
+
+        elif self.scalarization == "lexicographic":
+            # Lexicographic: strict priority ordering
+            return self._scalarize_lexicographic(reward_vector, weight)
+
         else:
             raise ValueError(f"Unknown scalarization: {self.scalarization}")
+
+    def _scalarize_with_constraints(
+        self,
+        reward_vector: np.ndarray,
+        weight: np.ndarray,
+    ) -> float:
+        """Constraint-based scalarization.
+
+        Optimizes the primary objective while satisfying threshold
+        constraints on secondary objectives.
+
+        Constraint thresholds can be set via self.constraints dict:
+        {'tardiness': -10.0, 'health': 50.0}
+        """
+        constraints = getattr(self, 'constraints', {})
+
+        # Primary objective (first one weighted by weight[0])
+        primary_reward = weight[0] * reward_vector[0]
+
+        # Penalty for violated constraints
+        penalty = 0.0
+        for obj_name, threshold in constraints.items():
+            if obj_name in self.objective_names:
+                idx = self.objective_names.index(obj_name)
+                violation = max(0, threshold - reward_vector[idx])
+                penalty += 100.0 * violation
+
+        return float(primary_reward - penalty)
+
+    def _scalarize_with_hypervolume(
+        self,
+        reward_vector: np.ndarray,
+    ) -> float:
+        """Hypervolume-aware scalarization.
+
+        Rewards actions that increase the hypervolume of the Pareto front.
+        """
+        reference_point = getattr(self, 'reference_point', np.zeros(self.n_objectives))
+
+        if len(self.pareto_archive.solutions) < 2:
+            # Not enough solutions, use weighted sum
+            return float(np.dot(self.current_weight, reward_vector))
+
+        # Compute current hypervolume
+        current_hv = self._compute_hypervolume_2d(reference_point)
+
+        # Compute HV if we add this solution
+        temp_solution = ParetoSolution(
+            policy_state={}, encoder_state={},
+            objectives=reward_vector,
+            weight_vector=self.current_weight,
+        )
+
+        # Check if it would be added
+        if self.pareto_archive._dominates(reward_vector, reference_point):
+            # This solution dominates reference, compute contribution
+            hv_contribution = self._estimate_hv_contribution(reward_vector, reference_point)
+            return float(hv_contribution)
+
+        return float(np.dot(self.current_weight, reward_vector))
+
+    def _scalarize_lexicographic(
+        self,
+        reward_vector: np.ndarray,
+        weight: np.ndarray,
+    ) -> float:
+        """Lexicographic scalarization.
+
+        Objectives are sorted by priority (weight magnitude).
+        Higher priority objectives dominate.
+        """
+        # Sort objectives by weight (descending = higher priority)
+        priority_order = np.argsort(-weight)
+
+        # Create lexicographic scalar with exponential weighting
+        scalar = 0.0
+        base = 1000.0  # Large base for strict ordering
+
+        for rank, obj_idx in enumerate(priority_order):
+            scalar += reward_vector[obj_idx] * (base ** (self.n_objectives - rank - 1))
+
+        return float(scalar / (base ** self.n_objectives))  # Normalize
+
+    def _compute_hypervolume_2d(self, reference_point: np.ndarray) -> float:
+        """Compute 2D hypervolume indicator.
+
+        Only works for 2 objectives; use Monte Carlo for higher dimensions.
+        """
+        if self.n_objectives != 2 or len(self.pareto_archive.solutions) == 0:
+            return 0.0
+
+        # Get objective values
+        points = np.array([s.objectives for s in self.pareto_archive.solutions])
+
+        # Sort by first objective
+        sorted_indices = np.argsort(points[:, 0])
+        points = points[sorted_indices]
+
+        # Compute HV
+        hv = 0.0
+        prev_y = reference_point[1]
+
+        for point in points:
+            if point[0] > reference_point[0] and point[1] > reference_point[1]:
+                hv += (point[0] - reference_point[0]) * (point[1] - prev_y)
+                prev_y = point[1]
+
+        return hv
+
+    def _estimate_hv_contribution(
+        self,
+        new_point: np.ndarray,
+        reference_point: np.ndarray,
+    ) -> float:
+        """Estimate hypervolume contribution of a new point."""
+        if self.n_objectives == 2:
+            # Exact for 2D
+            existing_points = np.array([s.objectives for s in self.pareto_archive.solutions])
+
+            # HV before
+            hv_before = self._compute_hypervolume_2d(reference_point)
+
+            # Add point temporarily
+            temp_archive = ParetoArchive(max_size=self.pareto_archive.max_size + 1)
+            for s in self.pareto_archive.solutions:
+                temp_archive.add(s)
+            temp_archive.add(ParetoSolution({}, {}, new_point, self.current_weight))
+
+            # HV after (approximated)
+            hv_after = hv_before + np.prod(new_point - reference_point) * 0.5
+
+            return max(0, hv_after - hv_before)
+
+        else:
+            # Monte Carlo estimate for higher dimensions
+            n_samples = 1000
+            samples = np.random.uniform(
+                reference_point,
+                np.maximum(new_point, reference_point + 1e-6),
+                (n_samples, self.n_objectives)
+            )
+
+            dominated_by_new = np.all(samples <= new_point, axis=1)
+            dominated_by_archive = np.zeros(n_samples, dtype=bool)
+
+            for s in self.pareto_archive.solutions:
+                dominated_by_archive |= np.all(samples <= s.objectives, axis=1)
+
+            # HV contribution = samples dominated by new but not by archive
+            contribution_samples = dominated_by_new & ~dominated_by_archive
+            volume_ratio = np.mean(contribution_samples)
+
+            box_volume = np.prod(new_point - reference_point)
+            return volume_ratio * box_volume
+
+    def set_constraints(self, constraints: Dict[str, float]) -> None:
+        """Set constraint thresholds for constraint-based scalarization.
+
+        Args:
+            constraints: Dict mapping objective names to minimum thresholds.
+                Example: {'tardiness': -10.0, 'health': 50.0}
+        """
+        self.constraints = constraints
+
+    def set_reference_point(self, reference_point: np.ndarray) -> None:
+        """Set reference point for hypervolume computation.
+
+        Args:
+            reference_point: Array of worst acceptable values per objective.
+        """
+        self.reference_point = reference_point
 
     def collect_rollout(self, env, n_steps: int) -> Dict[str, Any]:
         """Collect experience with multi-objective rewards."""

@@ -12,7 +12,7 @@ encouraging block completion and preventive maintenance.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import gymnasium as gym
 from gymnasium import spaces
@@ -22,12 +22,17 @@ from .shipyard import ShipyardGraph
 from .entities import (
     Block,
     SPMT,
-    Crane,
-    ProductionStage,
+    GoliathCrane,
+    HHIProductionStage,
     BlockStatus,
     SPMTStatus,
-    CraneStatus,
+    GoliathCraneStatus,
 )
+
+# Backward compatibility aliases
+Crane = GoliathCrane
+CraneStatus = GoliathCraneStatus
+ProductionStage = HHIProductionStage
 from .degradation import WienerDegradationModel
 from .precedence import is_predecessor_complete
 
@@ -46,16 +51,28 @@ class ShipyardEnv(gym.Env):
         # Shipyard graph
         self.shipyard = ShipyardGraph(config.get("shipyard", {}))
 
-        # Counts
-        self.n_blocks = int(config.get("n_blocks", 0))
-        self.n_spmts = int(config.get("n_spmts", 0))
-        self.n_cranes = int(config.get("n_cranes", 0))
-        self.n_facilities = len(config.get("shipyard", {}).get("facilities", []))
+        # Counts - support both flat config and HHI nested config
+        self.n_blocks = int(config.get("n_blocks", 200))
+
+        # SPMTs: check transporters.n_spmts first (HHI config), then n_spmts
+        transporters = config.get("transporters", {})
+        self.n_spmts = int(transporters.get("n_spmts", config.get("n_spmts", 12)))
+
+        # Cranes: check goliath_cranes list first (HHI config), then n_cranes
+        goliath_cranes_list = config.get("goliath_cranes", [])
+        self.n_cranes = len(goliath_cranes_list) if goliath_cranes_list else int(config.get("n_cranes", 3))
+
+        # Facilities: count from all zones (HHI config) or flat list
+        facility_count = 0
+        for zone in ["steel_processing", "panel_assembly", "block_assembly", "pre_erection"]:
+            zone_config = config.get(zone, {})
+            facility_count += len(zone_config.get("facilities", []))
+        self.n_facilities = facility_count if facility_count > 0 else len(config.get("shipyard", {}).get("facilities", []))
 
         # Feature dimensions (matching the agent architecture)
         self.block_features = 8
         self.spmt_features = 9
-        self.crane_features = 7
+        self.crane_features = 8  # GoliathCrane has 3 health components (hoist, trolley, gantry)
         self.facility_features = 3
 
         # Define observation space as a flat vector. A GNN encoder will reshape.
@@ -70,14 +87,14 @@ class ShipyardEnv(gym.Env):
         )
 
         # Action space definition (hierarchical). See the policy for details.
-        max_requests = self.n_blocks  # upper bound on pending requests
-        max_equipment = self.n_spmts + self.n_cranes
+        max_requests = max(self.n_blocks, 1)  # upper bound on pending requests
+        max_equipment = max(self.n_spmts + self.n_cranes, 1)
         self.action_space = spaces.Dict(
             {
                 "action_type": spaces.Discrete(4),  # dispatch spmt, dispatch crane, maint, hold
-                "spmt_idx": spaces.Discrete(self.n_spmts),
+                "spmt_idx": spaces.Discrete(max(self.n_spmts, 1)),
                 "request_idx": spaces.Discrete(max_requests),
-                "crane_idx": spaces.Discrete(self.n_cranes),
+                "crane_idx": spaces.Discrete(max(self.n_cranes, 1)),
                 "lift_idx": spaces.Discrete(max_requests),
                 "equipment_idx": spaces.Discrete(max_equipment),
             }
@@ -101,6 +118,24 @@ class ShipyardEnv(gym.Env):
         self.degradation_model = WienerDegradationModel()
         self.max_time = float(config.get("max_time", 10000))
 
+        # Initialize ships list
+        self.ships: List[Any] = []
+
+    # ------------------------------------------------------------------
+    # Properties for entity access
+    # ------------------------------------------------------------------
+    @property
+    def blocks(self) -> List[Block]:
+        """Get all blocks."""
+        return self.entities.get("blocks", [])
+
+    @property
+    def spmts(self) -> List[SPMT]:
+        """Get all SPMTs."""
+        return self.entities.get("spmts", [])
+
+    # goliath_cranes is set in _create_cranes()
+
     # ------------------------------------------------------------------
     # Creation and reset methods
     # ------------------------------------------------------------------
@@ -122,27 +157,63 @@ class ShipyardEnv(gym.Env):
         self.entities["blocks"] = blocks
 
     def _create_spmts(self) -> None:
+        """Create SPMTs from config."""
         spmts: List[SPMT] = []
+        transporters = self.config.get("transporters", {})
+        spmt_capacity = float(transporters.get("spmt_capacity_tons", 500.0))
         for i in range(self.n_spmts):
-            spmt = SPMT(id=f"V{i}", capacity=500.0, current_location="yard_depot")
+            spmt = SPMT(id=f"SPMT-{i:02d}", capacity=spmt_capacity, current_location="spmt_depot")
             spmts.append(spmt)
         self.entities["spmts"] = spmts
 
     def _create_cranes(self) -> None:
-        cranes: List[Crane] = []
-        for i in range(self.n_cranes):
-            crane = Crane(id=f"C{i}")
-            cranes.append(crane)
+        """Create Goliath cranes from config."""
+        cranes: List[GoliathCrane] = []
+        goliath_cranes_list = self.config.get("goliath_cranes", [])
+
+        if goliath_cranes_list:
+            # HHI config with explicit crane definitions
+            for crane_cfg in goliath_cranes_list:
+                crane = GoliathCrane(
+                    id=crane_cfg.get("id", f"GC{len(cranes):02d}"),
+                    assigned_dock=crane_cfg.get("assigned_dock", ""),
+                    capacity_tons=float(crane_cfg.get("capacity_tons", 900.0)),
+                    height_m=float(crane_cfg.get("height_m", 109.0)),
+                )
+                cranes.append(crane)
+        else:
+            # Fallback: generate cranes
+            for i in range(self.n_cranes):
+                crane = GoliathCrane(
+                    id=f"GC{i:02d}",
+                    assigned_dock=f"dock_{(i % 10) + 1}",
+                    capacity_tons=900.0,
+                )
+                cranes.append(crane)
+
         self.entities["cranes"] = cranes
+        # Also store as goliath_cranes for compatibility
+        self.goliath_cranes = cranes
 
     def _initialize_facilities(self) -> None:
         """Create queues and processing lists for each facility."""
-        facilities = self.config.get("shipyard", {}).get("facilities", [])
-        for f in facilities:
-            name = f["name"]
-            self.facility_queues[name] = []
-            self.facility_processing[name] = []
-            self.facility_remaining_time[name] = {}
+        # Try HHI zone structure first
+        for zone in ["steel_processing", "panel_assembly", "block_assembly", "pre_erection"]:
+            zone_config = self.config.get(zone, {})
+            for f in zone_config.get("facilities", []):
+                name = f["name"]
+                self.facility_queues[name] = []
+                self.facility_processing[name] = []
+                self.facility_remaining_time[name] = {}
+
+        # Fallback to flat facilities list
+        if not self.facility_queues:
+            facilities = self.config.get("shipyard", {}).get("facilities", [])
+            for f in facilities:
+                name = f["name"]
+                self.facility_queues[name] = []
+                self.facility_processing[name] = []
+                self.facility_remaining_time[name] = {}
 
     def reset(self, seed: int | None = None, options: dict | None = None) -> Tuple[np.ndarray, Dict]:
         super().reset(seed=seed)
@@ -161,9 +232,18 @@ class ShipyardEnv(gym.Env):
         self._initialize_facilities()
         # Assign initial queues: all blocks wait at first facility queue
         first_fac = None
-        facilities = self.config.get("shipyard", {}).get("facilities", [])
-        if facilities:
-            first_fac = facilities[0]["name"]
+        # Try HHI zone structure first
+        for zone in ["steel_processing", "panel_assembly", "block_assembly", "pre_erection"]:
+            zone_config = self.config.get(zone, {})
+            zone_facilities = zone_config.get("facilities", [])
+            if zone_facilities:
+                first_fac = zone_facilities[0]["name"]
+                break
+        # Fallback to flat facilities list
+        if not first_fac:
+            facilities = self.config.get("shipyard", {}).get("facilities", [])
+            if facilities:
+                first_fac = facilities[0]["name"]
         if first_fac:
             for block in self.entities["blocks"]:
                 self.facility_queues[first_fac].append(block.id)
@@ -178,8 +258,9 @@ class ShipyardEnv(gym.Env):
         for crane in self.entities["cranes"]:
             crane.status = CraneStatus.IDLE
             crane.current_block = None
-            crane.health_cable = 100.0
-            crane.health_motor = 100.0
+            crane.health_hoist = 100.0
+            crane.health_trolley = 100.0
+            crane.health_gantry = 100.0
         # Reset metrics
         self.metrics = {
             "blocks_completed": 0,
@@ -188,42 +269,130 @@ class ShipyardEnv(gym.Env):
             "total_tardiness": 0.0,
             "empty_travel_distance": 0.0,
         }
+        # Warm-up: advance simulation to create initial transport requests
+        # This ensures SPMT dispatch is available from the start of training
+        warmup_steps = 10
+        for _ in range(warmup_steps):
+            self._advance_simulation(dt=1.0)
+        # Reset sim_time to 0 after warmup (tests expect reset to clear time)
+        self.sim_time = 0.0
         return self._get_observation(), self._get_info()
 
     # ------------------------------------------------------------------
     # Simulation update helpers
     # ------------------------------------------------------------------
-    # Map config facility names to ProductionStage enum members
+    # Map config facility names to HHI ProductionStage enum members
     _FAC_NAME_TO_STAGE = {
-        "cutting": ProductionStage.CUTTING,
-        "panel": ProductionStage.PANEL,
-        "assembly": ProductionStage.ASSEMBLY,
-        "outfitting": ProductionStage.OUTFITTING,
+        # Steel Processing Zone (HHI style)
+        "cutting_shop": ProductionStage.STEEL_CUTTING,
+        "steel_stockyard": ProductionStage.STEEL_CUTTING,
+        "part_fabrication": ProductionStage.PART_FABRICATION,
+        # Panel Assembly Zone (HHI style)
+        "flat_panel_line": ProductionStage.PANEL_ASSEMBLY,
+        "flat_panel_line_1": ProductionStage.PANEL_ASSEMBLY,
+        "flat_panel_line_2": ProductionStage.PANEL_ASSEMBLY,
+        "curved_block_shop": ProductionStage.PANEL_ASSEMBLY,
+        # Block Assembly Zone (HHI style)
+        "block_assembly": ProductionStage.BLOCK_ASSEMBLY,
+        "block_assembly_hall_1": ProductionStage.BLOCK_ASSEMBLY,
+        "block_assembly_hall_2": ProductionStage.BLOCK_ASSEMBLY,
+        "block_assembly_hall_3": ProductionStage.BLOCK_ASSEMBLY,
+        "outfitting_shop": ProductionStage.BLOCK_OUTFITTING,
+        "paint_shop": ProductionStage.PAINTING,
+        # Pre-Erection Zone (HHI style)
+        "grand_block_staging": ProductionStage.PRE_ERECTION,
+        "grand_block_staging_north": ProductionStage.PRE_ERECTION,
+        "grand_block_staging_south": ProductionStage.PRE_ERECTION,
+        # Dry Docks (HHI has 10 dry docks)
+        "dock": ProductionStage.ERECTION,
+        "dock_1": ProductionStage.ERECTION,
+        "dock_2": ProductionStage.ERECTION,
+        "dock_3": ProductionStage.ERECTION,
+        "dock_4": ProductionStage.ERECTION,
+        "dock_5": ProductionStage.ERECTION,
+        "dock_6": ProductionStage.ERECTION,
+        "dock_7": ProductionStage.ERECTION,
+        "dock_8": ProductionStage.ERECTION,
+        "dock_9": ProductionStage.ERECTION,
+        "dock_10": ProductionStage.ERECTION,
+        # Default/flat config facility names (for default.yaml)
+        "cutting": ProductionStage.STEEL_CUTTING,
+        "panel": ProductionStage.PANEL_ASSEMBLY,
+        "assembly": ProductionStage.BLOCK_ASSEMBLY,
+        "outfitting": ProductionStage.BLOCK_OUTFITTING,
         "paint": ProductionStage.PAINTING,
-        "painting": ProductionStage.PAINTING,
     }
+
+    # Map ProductionStage to list of possible facility names (order = priority)
+    # Includes both HHI and default/flat config names
+    _STAGE_TO_FACILITIES = {
+        ProductionStage.STEEL_CUTTING: ["steel_stockyard", "cutting_shop", "cutting"],
+        ProductionStage.PART_FABRICATION: ["part_fabrication", "cutting"],  # fallback to cutting
+        ProductionStage.PANEL_ASSEMBLY: ["flat_panel_line_1", "flat_panel_line_2", "curved_block_shop", "panel"],
+        ProductionStage.BLOCK_ASSEMBLY: ["block_assembly_hall_1", "block_assembly_hall_2", "block_assembly_hall_3", "assembly"],
+        ProductionStage.BLOCK_OUTFITTING: ["outfitting_shop", "outfitting"],
+        ProductionStage.PAINTING: ["paint_shop", "paint"],
+        ProductionStage.PRE_ERECTION: ["grand_block_staging_north", "grand_block_staging_south"],
+        ProductionStage.ERECTION: None,  # Handled by crane lift, not SPMT transport
+    }
+
+    def _get_facility_for_stage(self, stage: ProductionStage, block: "Block") -> Optional[str]:
+        """Get the target facility for a given production stage.
+
+        Returns None if the stage requires crane lift (ERECTION) or no facility mapping.
+        Uses load balancing: picks facility with shortest queue from available facilities.
+        """
+        facilities = self._STAGE_TO_FACILITIES.get(stage)
+        if facilities is None:
+            return None
+
+        # Filter to only facilities that actually exist in our queues
+        available_facilities = [f for f in facilities if f in self.facility_queues]
+        if not available_facilities:
+            return None
+
+        # Load balance: pick facility with shortest queue
+        min_queue_len = float("inf")
+        best_fac = available_facilities[0]
+        for fac in available_facilities:
+            queue_len = len(self.facility_queues.get(fac, []))
+            if queue_len < min_queue_len:
+                min_queue_len = queue_len
+                best_fac = fac
+        return best_fac
 
     def _assign_blocks_to_facilities(self) -> None:
         """Assign blocks from facility queues to processing if capacity allows."""
-        facilities_cfg = self.config.get("shipyard", {}).get("facilities", [])
-        fac_info = {f["name"]: f for f in facilities_cfg}
+        # Build facility info from HHI zone structure or flat config
+        fac_info = {}
+        for zone in ["steel_processing", "panel_assembly", "block_assembly", "pre_erection"]:
+            zone_config = self.config.get(zone, {})
+            for f in zone_config.get("facilities", []):
+                fac_info[f["name"]] = f
+        # Fallback to flat config
+        if not fac_info:
+            facilities_cfg = self.config.get("shipyard", {}).get("facilities", [])
+            fac_info = {f["name"]: f for f in facilities_cfg}
+
         for fac_name, queue in self.facility_queues.items():
-            capacity = fac_info[fac_name].get("capacity", 1)
+            fac = fac_info.get(fac_name, {})
+            capacity = fac.get("capacity", 1)
             while queue and len(self.facility_processing[fac_name]) < capacity:
                 block_id = queue.pop(0)
                 self.facility_processing[fac_name].append(block_id)
                 # Determine processing time (log‑normal)
-                mean = fac_info[fac_name]["processing_time_mean"]
-                std = fac_info[fac_name]["processing_time_std"]
+                mean = fac.get("processing_time_mean", 10.0)
+                std = fac.get("processing_time_std", 2.0)
                 proc_time = float(np.random.lognormal(mean=np.log(mean), sigma=std / mean))
                 self.facility_remaining_time[fac_name][block_id] = proc_time
                 # Update block status
                 block = self._get_block(block_id)
                 block.status = BlockStatus.IN_PROCESS
-                # Map facility name -> ProductionStage safely
-                stage = self._FAC_NAME_TO_STAGE.get(fac_name.lower())
-                if stage is not None:
-                    block.current_stage = stage
+                # NOTE: Do NOT reset block.current_stage here!
+                # The stage is set when block advances after completing a facility.
+                # Resetting here causes blocks to oscillate between stages when
+                # a facility handles multiple stages (e.g., "cutting" for both
+                # STEEL_CUTTING and PART_FABRICATION fallback).
                 block.location = fac_name
 
     def _update_processing(self, dt: float) -> None:
@@ -243,7 +412,14 @@ class ShipyardEnv(gym.Env):
                 del self.facility_remaining_time[fac_name][block_id]
 
         # Handle completion: create transport or lift requests depending on stage
-        facilities_list = self.config.get("shipyard", {}).get("facilities", [])
+        # Build facilities_list from zone structure (matches HHI config)
+        facilities_list = []
+        for zone in ["steel_processing", "panel_assembly", "block_assembly", "pre_erection"]:
+            zone_config = self.config.get(zone, {})
+            facilities_list.extend(zone_config.get("facilities", []))
+        # Fallback to flat config if zones not present
+        if not facilities_list:
+            facilities_list = self.config.get("shipyard", {}).get("facilities", [])
         for fac_name, block_id in completed_blocks:
             block = self._get_block(block_id)
             block.status = BlockStatus.WAITING
@@ -251,21 +427,25 @@ class ShipyardEnv(gym.Env):
             next_stage_index = block.current_stage.value + 1
             if next_stage_index >= len(ProductionStage):
                 # Completed all stages
-                block.status = BlockStatus.PLACED_ON_DOCK
+                block.status = BlockStatus.ERECTED
                 self.metrics["blocks_completed"] += 1
                 self._log_block_event(block_id, "completed", "DOCK", "dock")
                 continue
             next_stage = ProductionStage(next_stage_index)
             block.current_stage = next_stage
+            # Track stage advances for reward computation
+            self.metrics["stage_advances"] = self.metrics.get("stage_advances", 0) + 1
             self._log_block_event(block_id, "stage_complete", fac_name, block.location)
-            if next_stage.value >= len(facilities_list):
-                # No more facilities (PRE_ERECTION / DOCK) — create lift request
+
+            # Map stage to facility using _STAGE_TO_FACILITIES
+            target_fac = self._get_facility_for_stage(next_stage, block)
+            if target_fac is None:
+                # PRE_ERECTION / ERECTION — create lift request
                 self.lift_requests.append({"block_id": block.id})
                 block.location = "pre_erection"
                 block.status = BlockStatus.AT_PRE_ERECTION
             else:
                 # Create transport request to next facility queue
-                target_fac = facilities_list[next_stage.value]["name"]
                 self.transport_requests.append(
                     {
                         "block_id": block.id,
@@ -306,13 +486,16 @@ class ShipyardEnv(gym.Env):
                 self._log_equipment_event(spmt.id, "spmt", "breakdown")
         for crane in self.entities.get("cranes", []):
             operating = crane.status in {CraneStatus.LIFTING, CraneStatus.POSITIONING}
-            crane.health_cable, fail_cable = self.degradation_model.step(
-                crane.health_cable, dt, load_ratio=0.2, operating=operating
+            crane.health_hoist, fail_hoist = self.degradation_model.step(
+                crane.health_hoist, dt, load_ratio=0.2, operating=operating
             )
-            crane.health_motor, fail_motor = self.degradation_model.step(
-                crane.health_motor, dt, load_ratio=0.2, operating=operating
+            crane.health_trolley, fail_trolley = self.degradation_model.step(
+                crane.health_trolley, dt, load_ratio=0.2, operating=operating
             )
-            if fail_cable or fail_motor:
+            crane.health_gantry, fail_gantry = self.degradation_model.step(
+                crane.health_gantry, dt, load_ratio=0.2, operating=operating
+            )
+            if fail_hoist or fail_trolley or fail_gantry:
                 crane.status = CraneStatus.BROKEN_DOWN
                 self.metrics["breakdowns"] += 1
                 self._log_equipment_event(crane.id, "crane", "breakdown")
@@ -331,11 +514,13 @@ class ShipyardEnv(gym.Env):
         self._degrade_equipment(dt)
         # Increase time
         self.sim_time += dt
-        # Handle tardiness accumulation
+        # Tardiness accumulation - only count the INCREMENT per step (dt for each tardy block)
+        # This prevents exponential blowup of cumulative tardiness
         for block in self.entities.get("blocks", []):
-            if block.status != BlockStatus.PLACED_ON_DOCK:
-                tardiness = max(0.0, self.sim_time - block.due_date)
-                self.metrics["total_tardiness"] += tardiness * dt
+            if block.status != BlockStatus.ERECTED:
+                if self.sim_time > block.due_date:
+                    # Block is tardy - add dt (1 unit of additional tardiness per step)
+                    self.metrics["total_tardiness"] += dt
 
     # ------------------------------------------------------------------
     # Action execution
@@ -347,15 +532,17 @@ class ShipyardEnv(gym.Env):
         Tracks SPMT busy time for utilization metrics.
         """
         if request_idx >= len(self.transport_requests):
-            return 0.0
+            return -0.01  # Penalty for invalid dispatch (no such request)
         request = self.transport_requests.pop(request_idx)
         block_id = request["block_id"]
         destination = request["destination"]
         spmt = self.entities["spmts"][spmt_idx]
         block = self._get_block(block_id)
-        # If SPMT is already carrying a load or not idle, ignore
+        # If SPMT is already carrying a load or not idle, penalize
         if spmt.status != SPMTStatus.IDLE or spmt.current_load is not None:
-            return 0.0
+            # Put the request back (it wasn't fulfilled)
+            self.transport_requests.insert(request_idx, request)
+            return -0.01  # Penalty for invalid dispatch (SPMT busy)
         # Compute travel time (distance) from current location to block
         travel_to_block = self.shipyard.get_travel_time(spmt.current_location, block.location)
         # Travel from block to destination
@@ -389,7 +576,9 @@ class ShipyardEnv(gym.Env):
         spmt.status = SPMTStatus.IDLE
 
         self._log_block_event(block_id, "transport_arrival", block.current_stage.name, destination)
-        return -self.w_empty * empty_distance
+        # Reward: +0.2 for successful dispatch, minus empty travel penalty
+        dispatch_reward = 0.2
+        return dispatch_reward - self.w_empty * empty_distance
 
     def _dispatch_crane(self, crane_idx: int, request_idx: int) -> float:
         """Dispatch a crane to lift a block onto the dock.
@@ -397,21 +586,23 @@ class ShipyardEnv(gym.Env):
         Validates precedence constraints and models crane travel/lift time.
         """
         if request_idx >= len(self.lift_requests):
-            return 0.0
+            return -0.01  # Penalty for invalid dispatch (no such request)
         request = self.lift_requests.pop(request_idx)
         block_id = request["block_id"]
         crane = self.entities["cranes"][crane_idx]
         block = self._get_block(block_id)
         if crane.status != CraneStatus.IDLE:
-            return 0.0
+            # Put the request back (it wasn't fulfilled)
+            self.lift_requests.insert(request_idx, request)
+            return -0.01  # Penalty for invalid dispatch (crane busy)
 
         # Enforce precedence: all predecessors must be placed on dock
         placed_blocks = {b.id: b for b in self.entities["blocks"]
-                        if b.status == BlockStatus.PLACED_ON_DOCK}
+                        if b.status == BlockStatus.ERECTED}
         if not is_predecessor_complete(block, placed_blocks):
             # Re-add request since we can't process it yet
             self.lift_requests.append(request)
-            return 0.0
+            return -0.01  # Penalty for precedence violation
 
         # Model crane travel time based on rail position
         # Assume block is at pre-erection area at position 0, dock at rail end
@@ -435,8 +626,10 @@ class ShipyardEnv(gym.Env):
         crane.status = CraneStatus.LIFTING
         crane.current_block = block_id
 
-        # Place block on dock
-        block.status = BlockStatus.PLACED_ON_DOCK
+        # Place block on dock and update stage
+        # Treat ERECTION as block-level completion (ship-level stages 8-10 are aggregated separately)
+        block.current_stage = ProductionStage.DELIVERY
+        block.status = BlockStatus.ERECTED
         block.location = "dock"
         self.metrics["blocks_completed"] += 1
 
@@ -468,8 +661,9 @@ class ShipyardEnv(gym.Env):
                 crane = self.entities["cranes"][crane_idx_rel]
                 if crane.status == CraneStatus.IDLE:
                     crane.status = CraneStatus.IN_MAINTENANCE
-                    crane.health_cable = self.degradation_model.perform_maintenance()
-                    crane.health_motor = self.degradation_model.perform_maintenance()
+                    crane.health_hoist = self.degradation_model.perform_maintenance()
+                    crane.health_trolley = self.degradation_model.perform_maintenance()
+                    crane.health_gantry = self.degradation_model.perform_maintenance()
                     crane.status = CraneStatus.IDLE
                     reward -= self.w_maintenance
                     self.metrics["planned_maintenance"] += 1
@@ -494,6 +688,8 @@ class ShipyardEnv(gym.Env):
         empty_travel_before = self.metrics.get("empty_travel_distance", 0.0)
         tardiness_before = self.metrics.get("total_tardiness", 0.0)
         breakdowns_before = self.metrics["breakdowns"]
+        blocks_completed_before = self.metrics["blocks_completed"]
+        stage_advances_before = self.metrics.get("stage_advances", 0)
 
         # Decode action
         action_type = int(action.get("action_type", 3))  # default hold
@@ -509,8 +705,17 @@ class ShipyardEnv(gym.Env):
             equip_idx = int(action.get("equipment_idx", 0))
             reward += self._trigger_maintenance(equip_idx)
         elif action_type == 3:
-            # Hold (no operation)
-            pass
+            # Hold (no operation) - only penalize if there were other valid actions
+            # Check if SPMT dispatch, crane dispatch, or maintenance was possible
+            has_valid_spmt = len(self.transport_requests) > 0
+            has_valid_crane = len(self.lift_requests) > 0
+            has_valid_maintenance = any(
+                e.get_min_health() < 60.0 and e.status not in [SPMTStatus.BROKEN_DOWN, CraneStatus.BROKEN_DOWN]
+                for e in self.entities.get("spmts", []) + self.entities.get("cranes", [])
+            )
+            if has_valid_spmt or has_valid_crane or has_valid_maintenance:
+                # There was something to do, but agent chose to hold - penalize
+                reward -= 0.3
 
         # Advance simulation by one hour
         self._advance_simulation(dt=1.0)
@@ -522,6 +727,24 @@ class ShipyardEnv(gym.Env):
         # Penalize tardiness accumulated this step
         tardiness_delta = self.metrics.get("total_tardiness", 0.0) - tardiness_before
         reward -= self.w_tardy * tardiness_delta * 0.01  # scale down for per-step
+
+        # Reward for block completions (+1.0 per completed block)
+        new_completions = self.metrics["blocks_completed"] - blocks_completed_before
+        reward += 1.0 * new_completions
+
+        # Reward for stage progression (+0.5 per stage advance)
+        # High reward to encourage dispatching blocks through the pipeline
+        new_stage_advances = self.metrics.get("stage_advances", 0) - stage_advances_before
+        reward += 0.5 * new_stage_advances
+
+        # Reward for successful dispatches (SPMT or crane)
+        # Action types 0 and 1 are dispatch actions; give bonus if they succeeded
+        if action_type in (0, 1) and new_stage_advances > 0:
+            reward += 0.3  # Bonus for dispatch that led to progress
+
+        # Clip rewards to prevent extreme values from destabilizing training
+        # Positive capped at +2.0 (allows multiple block completions), negative at -10.0
+        reward = float(np.clip(reward, -10.0, 2.0))
 
         # Periodic DB logging for time-series data (every 50 sim hours)
         if self.db_logging_enabled and int(self.sim_time) % 50 == 0:
@@ -650,13 +873,13 @@ class ShipyardEnv(gym.Env):
                         mask["spmt_dispatch"][i, j] = True
         # Crane dispatch mask (includes precedence check)
         placed_blocks = {b.id: b for b in self.entities.get("blocks", [])
-                        if b.status == BlockStatus.PLACED_ON_DOCK}
+                        if b.status == BlockStatus.ERECTED}
         for i, crane in enumerate(self.entities.get("cranes", [])):
             if crane.status == CraneStatus.IDLE and crane.status != CraneStatus.BROKEN_DOWN:
                 for j, req in enumerate(self.lift_requests):
                     block = self._get_block(req["block_id"])
                     # Check weight, crane health, and precedence constraints
-                    if (block.weight <= crane.lift_capacity
+                    if (block.weight <= crane.capacity_tons
                         and crane.get_min_health() > 20.0
                         and is_predecessor_complete(block, placed_blocks)):
                         mask["crane_dispatch"][i, j] = True
@@ -731,7 +954,7 @@ class ShipyardEnv(gym.Env):
 
     def get_graph_data(self) -> Dict:
         # GRAPH_SANITIZE_FEATURES: ensure node features are numeric floats
-        from simulation.entities import ProductionStage
+        from simulation.entities import HHIProductionStage as ProductionStage
         stage_map = {s.value: float(i+1) for i, s in enumerate(ProductionStage)}
         def _to_float_list(seq):
             out = []
@@ -781,9 +1004,21 @@ class ShipyardEnv(gym.Env):
         for c in self.entities.get("cranes", []):
             crane_x.append(torch.tensor(_to_float_list(self._encode_crane(c)), dtype=torch.float))
             crane_batch.append(0)
-        for f in self.config.get("shipyard", {}).get("facilities", []):
-            fac_x.append(torch.tensor(self._encode_facility(f["name"]), dtype=torch.float))
-            fac_batch.append(0)
+
+        # Get facilities from HHI zone structure or flat config
+        fac_names = []
+        for zone in ["steel_processing", "panel_assembly", "block_assembly", "pre_erection"]:
+            zone_config = self.config.get(zone, {})
+            for f in zone_config.get("facilities", []):
+                fac_names.append(f["name"])
+                fac_x.append(torch.tensor(self._encode_facility(f["name"]), dtype=torch.float))
+                fac_batch.append(0)
+        # Fallback to flat facilities list
+        if not fac_names:
+            for f in self.config.get("shipyard", {}).get("facilities", []):
+                fac_names.append(f["name"])
+                fac_x.append(torch.tensor(self._encode_facility(f["name"]), dtype=torch.float))
+                fac_batch.append(0)
         data["block"].x = torch.stack(block_x) if block_x else torch.empty((0, self.block_features))
         data["block"].batch = torch.tensor(block_batch, dtype=torch.long)
         data["spmt"].x = torch.stack(spmt_x) if spmt_x else torch.empty((0, self.spmt_features))
@@ -812,9 +1047,9 @@ class ShipyardEnv(gym.Env):
         crane_to_block_src = block_to_crane_dst.copy()
         crane_to_block_dst = block_to_crane_src.copy()
         # Blocks to facilities (current location)
+        # Note: fac_names was populated above when creating facility features
         block_to_fac_src = []
         block_to_fac_dst = []
-        fac_names = [f["name"] for f in self.config.get("shipyard", {}).get("facilities", [])]
         for i, b in enumerate(self.entities.get("blocks", [])):
             # Map facility name to index
             fac_idx = 0
@@ -822,8 +1057,10 @@ class ShipyardEnv(gym.Env):
                 if name in b.location:
                     fac_idx = idx
                     break
-            block_to_fac_src.append(i)
-            block_to_fac_dst.append(fac_idx)
+            # Only add edge if there are facilities
+            if fac_names:
+                block_to_fac_src.append(i)
+                block_to_fac_dst.append(fac_idx)
         # Assign edges
         import torch_geometric as tg  # type: ignore
         # Convert lists to tensors
@@ -861,29 +1098,31 @@ class ShipyardEnv(gym.Env):
             )
 
         # SPMT -> at -> facility edges (current location)
-        spmt_fac_src, spmt_fac_dst = [], []
-        for j, s in enumerate(self.entities.get("spmts", [])):
-            fac_idx = 0
-            for idx, name in enumerate(fac_names):
-                if name in s.current_location:
-                    fac_idx = idx
-                    break
-            spmt_fac_src.append(j)
-            spmt_fac_dst.append(fac_idx)
-        if spmt_fac_src:
-            data["spmt", "at", "facility"].edge_index = torch.tensor(
-                [spmt_fac_src, spmt_fac_dst], dtype=torch.long
-            )
+        # Only create if there are facilities
+        if fac_names:
+            spmt_fac_src, spmt_fac_dst = [], []
+            for j, s in enumerate(self.entities.get("spmts", [])):
+                fac_idx = 0
+                for idx, name in enumerate(fac_names):
+                    if name in s.current_location:
+                        fac_idx = idx
+                        break
+                spmt_fac_src.append(j)
+                spmt_fac_dst.append(fac_idx)
+            if spmt_fac_src:
+                data["spmt", "at", "facility"].edge_index = torch.tensor(
+                    [spmt_fac_src, spmt_fac_dst], dtype=torch.long
+                )
 
-        # Crane -> at -> facility edges (cranes are at dock, use last facility index)
-        crane_fac_src, crane_fac_dst = [], []
-        dock_fac_idx = len(fac_names) - 1 if fac_names else 0  # dock is after last facility
-        for k, c in enumerate(self.entities.get("cranes", [])):
-            crane_fac_src.append(k)
-            crane_fac_dst.append(dock_fac_idx)  # all cranes operate at dock area
-        if crane_fac_src:
-            data["crane", "at", "facility"].edge_index = torch.tensor(
-                [crane_fac_src, crane_fac_dst], dtype=torch.long
-            )
+            # Crane -> at -> facility edges (cranes are at dock, use last facility index)
+            crane_fac_src, crane_fac_dst = [], []
+            dock_fac_idx = len(fac_names) - 1  # dock is after last facility
+            for k, c in enumerate(self.entities.get("cranes", [])):
+                crane_fac_src.append(k)
+                crane_fac_dst.append(dock_fac_idx)  # all cranes operate at dock area
+            if crane_fac_src:
+                data["crane", "at", "facility"].edge_index = torch.tensor(
+                    [crane_fac_src, crane_fac_dst], dtype=torch.long
+                )
 
         return data

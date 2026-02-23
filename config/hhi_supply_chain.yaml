@@ -1,0 +1,459 @@
+# HD Hyundai Heavy Industries - Ulsan Shipyard with Supply Chain Extension
+# Extends hhi_ulsan.yaml with multi-supplier, inventory, and labor management
+
+log_dir: /Users/stepheneacuello/Projects/shipyard_scheduling/logs/
+checkpoint_dir: /Users/stepheneacuello/Projects/shipyard_scheduling/data/checkpoints/
+
+# Shipyard metadata (same as hhi_ulsan)
+shipyard:
+  name: "HD Hyundai Heavy Industries - Ulsan (Supply Chain)"
+  location:
+    city: "Ulsan"
+    country: "South Korea"
+    latitude: 35.5067
+    longitude: 129.4133
+  area_acres: 1780
+  coastline_km: 4
+
+# LNG Carrier configuration
+ship:
+  type: "lng_carrier"
+  capacity_cbm: 174000
+  length_m: 295
+  beam_m: 46
+  blocks_per_ship: 200
+  curved_block_ratio: 0.375
+  flat_block_count: 125
+  curved_block_count: 75
+
+# Smaller instance for faster training with supply chain
+n_ships: 4
+n_blocks_per_ship: 50
+n_spmts: 12
+n_goliath_cranes: 6
+n_docks: 6
+n_quays: 2
+continuous_production: true
+
+# =============================================================================
+# FACILITIES (same zones as hhi_ulsan, reduced count)
+# =============================================================================
+
+steel_processing:
+  facilities:
+    - name: steel_stockyard
+      processing_time_mean: 4.0
+      processing_time_std: 1.0
+      capacity: 30
+
+    - name: cutting_shop
+      processing_time_mean: 8.0
+      processing_time_std: 2.0
+      capacity: 15
+
+    - name: part_fabrication
+      processing_time_mean: 12.0
+      processing_time_std: 3.0
+      capacity: 20
+
+panel_assembly:
+  facilities:
+    - name: flat_panel_line_1
+      processing_time_mean: 16.0
+      processing_time_std: 4.0
+      capacity: 10
+
+    - name: flat_panel_line_2
+      processing_time_mean: 16.0
+      processing_time_std: 4.0
+      capacity: 10
+
+    - name: curved_block_shop
+      processing_time_mean: 24.0
+      processing_time_std: 6.0
+      capacity: 6
+
+block_assembly:
+  facilities:
+    - name: block_assembly_hall_1
+      processing_time_mean: 48.0
+      processing_time_std: 12.0
+      capacity: 8
+
+    - name: block_assembly_hall_2
+      processing_time_mean: 48.0
+      processing_time_std: 12.0
+      capacity: 8
+
+    - name: block_assembly_hall_3
+      processing_time_mean: 48.0
+      processing_time_std: 12.0
+      capacity: 6
+
+    - name: outfitting_shop
+      processing_time_mean: 40.0
+      processing_time_std: 10.0
+      capacity: 10
+
+    - name: paint_shop
+      processing_time_mean: 16.0
+      processing_time_std: 4.0
+      capacity: 6
+
+pre_erection:
+  facilities:
+    - name: grand_block_staging_north
+      processing_time_mean: 24.0
+      processing_time_std: 6.0
+      capacity: 15
+
+    - name: grand_block_staging_south
+      processing_time_mean: 24.0
+      processing_time_std: 6.0
+      capacity: 15
+
+# =============================================================================
+# EQUIPMENT (reduced from full HHI)
+# =============================================================================
+
+goliath_cranes:
+  - id: GC01
+    assigned_dock: dock_1
+    capacity_tons: 900
+    height_m: 109
+    span_m: 150
+    rail_length_m: 500
+
+  - id: GC02
+    assigned_dock: dock_2
+    capacity_tons: 900
+    height_m: 109
+    span_m: 100
+    rail_length_m: 420
+
+  - id: GC03
+    assigned_dock: dock_3
+    capacity_tons: 900
+    height_m: 109
+    span_m: 100
+    rail_length_m: 420
+
+  - id: GC04
+    assigned_dock: dock_4
+    capacity_tons: 900
+    height_m: 109
+    span_m: 100
+    rail_length_m: 410
+
+  - id: GC05
+    assigned_dock: dock_5
+    capacity_tons: 600
+    height_m: 90
+    span_m: 85
+    rail_length_m: 380
+
+  - id: GC06
+    assigned_dock: dock_6
+    capacity_tons: 450
+    height_m: 75
+    span_m: 70
+    rail_length_m: 320
+
+dry_docks:
+  - name: dock_1
+    length_m: 490
+    width_m: 115
+    depth_m: 13.5
+    capacity: 1
+    cranes: ["GC01"]
+
+  - name: dock_2
+    length_m: 400
+    width_m: 80
+    depth_m: 12.0
+    capacity: 1
+    cranes: ["GC02"]
+
+  - name: dock_3
+    length_m: 400
+    width_m: 80
+    depth_m: 12.0
+    capacity: 1
+    cranes: ["GC03"]
+
+  - name: dock_4
+    length_m: 390
+    width_m: 80
+    depth_m: 11.5
+    capacity: 1
+    cranes: ["GC04"]
+
+  - name: dock_5
+    length_m: 360
+    width_m: 68
+    depth_m: 11.0
+    capacity: 1
+    cranes: ["GC05"]
+
+  - name: dock_6
+    length_m: 350
+    width_m: 65
+    depth_m: 10.5
+    capacity: 1
+    cranes: ["GC06"]
+
+outfitting_quays:
+  - name: quay_1
+    length_m: 400
+    capacity: 2
+
+  - name: quay_2
+    length_m: 350
+    capacity: 2
+
+# =============================================================================
+# TRANSPORT NETWORK (same as hhi_ulsan)
+# =============================================================================
+
+transport_network:
+  steel_stockyard:
+    cutting_shop: 0.25
+    steel_staging: 0.1
+
+  cutting_shop:
+    part_fabrication: 0.5
+    flat_panel_line_1: 0.75
+    flat_panel_line_2: 0.75
+    curved_block_shop: 1.0
+
+  part_fabrication:
+    flat_panel_line_1: 0.5
+    flat_panel_line_2: 0.5
+    curved_block_shop: 0.75
+
+  flat_panel_line_1:
+    block_assembly_hall_1: 1.0
+    block_assembly_hall_2: 1.0
+
+  flat_panel_line_2:
+    block_assembly_hall_1: 1.0
+    block_assembly_hall_2: 1.0
+    block_assembly_hall_3: 1.25
+
+  curved_block_shop:
+    block_assembly_hall_3: 1.0
+
+  block_assembly_hall_1:
+    outfitting_shop: 0.75
+  block_assembly_hall_2:
+    outfitting_shop: 0.75
+  block_assembly_hall_3:
+    outfitting_shop: 0.5
+
+  outfitting_shop:
+    paint_shop: 0.5
+
+  paint_shop:
+    grand_block_staging_north: 0.75
+    grand_block_staging_south: 0.75
+
+  grand_block_staging_north:
+    dock_1: 1.0
+    dock_2: 1.25
+    dock_3: 1.5
+
+  grand_block_staging_south:
+    dock_4: 1.0
+    dock_5: 1.25
+    dock_6: 1.5
+
+  dock_1:
+    quay_1: 0.5
+  dock_2:
+    quay_1: 0.75
+  dock_3:
+    quay_1: 1.0
+  dock_4:
+    quay_2: 0.5
+  dock_5:
+    quay_2: 0.75
+  dock_6:
+    quay_2: 1.0
+
+# =============================================================================
+# REWARD CONFIGURATION
+# =============================================================================
+
+reward_tardy: 10.0
+reward_empty_travel: 0.1
+reward_breakdown: 10.0
+reward_maintenance: 5.0
+reward_completion: 1.0
+reward_erection: 10.0
+reward_ship_delivery: 500.0
+
+max_time: 25000
+
+# =============================================================================
+# DEGRADATION MODEL
+# =============================================================================
+
+degradation:
+  base_drift: 0.15
+  load_drift_factor: 0.2
+  volatility: 0.05
+  failure_threshold: 20.0
+
+# =============================================================================
+# SUPPLY CHAIN EXTENSION
+# =============================================================================
+
+supply_chain:
+  enable_suppliers: true
+  enable_inventory: true
+  enable_labor: true
+
+  n_suppliers: 4
+  n_inventory_types: 6
+  n_labor_pools: 5
+
+  # Reward weights
+  reward_stockout: 20.0
+  reward_holding_cost: 0.01
+  reward_procurement_cost: 0.1
+  reward_labor_cost: 0.05
+
+  # --- Suppliers ---
+  suppliers:
+    - id: SUP_POSCO
+      name: "POSCO Steel"
+      lead_time_mean: 48.0
+      lead_time_std: 8.0
+      reliability: 0.95
+      capacity_per_period: 800.0
+      price_per_unit: 0.8
+      specializations: ["steel_plate", "pipe_section"]
+
+    - id: SUP_KOREA_PIPE
+      name: "Korea Pipe Co."
+      lead_time_mean: 72.0
+      lead_time_std: 16.0
+      reliability: 0.88
+      capacity_per_period: 400.0
+      price_per_unit: 1.2
+      specializations: ["pipe_section", "welding_consumable"]
+
+    - id: SUP_HYOSUNG
+      name: "Hyosung Electrical"
+      lead_time_mean: 96.0
+      lead_time_std: 24.0
+      reliability: 0.92
+      capacity_per_period: 300.0
+      price_per_unit: 1.5
+      specializations: ["electrical_cable", "insulation"]
+
+    - id: SUP_HANKOOK
+      name: "Hankook Paint"
+      lead_time_mean: 36.0
+      lead_time_std: 6.0
+      reliability: 0.97
+      capacity_per_period: 600.0
+      price_per_unit: 0.6
+      specializations: ["paint"]
+
+  # --- Inventory ---
+  inventory:
+    - id: MAT_STEEL
+      material_type: "steel_plate"
+      initial_quantity: 2000.0
+      location: "steel_stockyard"
+      reorder_point: 400.0
+      max_capacity: 5000.0
+      consumption_rate: 1.0
+
+    - id: MAT_PIPE
+      material_type: "pipe_section"
+      initial_quantity: 800.0
+      location: "outfitting_shop"
+      reorder_point: 150.0
+      max_capacity: 2000.0
+      consumption_rate: 0.3
+
+    - id: MAT_CABLE
+      material_type: "electrical_cable"
+      initial_quantity: 600.0
+      location: "outfitting_shop"
+      reorder_point: 100.0
+      max_capacity: 1500.0
+      consumption_rate: 0.2
+
+    - id: MAT_INSULATION
+      material_type: "insulation"
+      initial_quantity: 500.0
+      location: "outfitting_shop"
+      reorder_point: 80.0
+      max_capacity: 1200.0
+      consumption_rate: 0.1
+
+    - id: MAT_PAINT
+      material_type: "paint"
+      initial_quantity: 1000.0
+      location: "paint_shop"
+      reorder_point: 200.0
+      max_capacity: 3000.0
+      consumption_rate: 0.5
+
+    - id: MAT_WELD
+      material_type: "welding_consumable"
+      initial_quantity: 1500.0
+      location: "block_assembly_hall_1"
+      reorder_point: 300.0
+      max_capacity: 4000.0
+      consumption_rate: 0.5
+
+  # --- Labor Pools ---
+  labor_pools:
+    - id: LABOR_WELDER
+      skill_type: "welder"
+      total_workers: 40
+      hourly_rate: 55.0
+      overtime_rate: 82.5
+
+    - id: LABOR_ELECTRICIAN
+      skill_type: "electrician"
+      total_workers: 25
+      hourly_rate: 60.0
+      overtime_rate: 90.0
+
+    - id: LABOR_FITTER
+      skill_type: "fitter"
+      total_workers: 35
+      hourly_rate: 50.0
+      overtime_rate: 75.0
+
+    - id: LABOR_PAINTER
+      skill_type: "painter"
+      total_workers: 20
+      hourly_rate: 45.0
+      overtime_rate: 67.5
+
+    - id: LABOR_CRANE_OP
+      skill_type: "crane_operator"
+      total_workers: 15
+      hourly_rate: 65.0
+      overtime_rate: 97.5
+
+# =============================================================================
+# PPO HYPERPARAMETERS
+# =============================================================================
+
+ppo:
+  lr: 3e-4
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_epsilon: 0.2
+  entropy_coef: 0.01
+  value_coef: 0.5
+  max_grad_norm: 0.5
+  n_epochs: 4
+  batch_size: 64
