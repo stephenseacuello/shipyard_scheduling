@@ -2,7 +2,7 @@
 
 **Project Title:** Machine Learning for Shipyard Production Scheduling: Neural Network-Based Block Sequencing and Processing Time Prediction
 
-**Team Members:** Stephen Eacuello, Steve (Partner)
+**Team Members:** Stephen Eacuello, Steve Blum
 
 **Date:** February 2026
 
