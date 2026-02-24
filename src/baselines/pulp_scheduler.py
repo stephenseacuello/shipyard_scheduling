@@ -69,24 +69,26 @@ class PuLPMIPScheduler:
 
     def __init__(self, config: Optional[Dict] = None) -> None:
         config = config or {}
-        self.horizon: int = config.get("horizon", 50)
-        self.replan_interval: int = config.get("replan_interval", 10)
-        self.solver_time_limit: float = config.get("solver_time_limit", 5.0)
+        self.horizon: int = config.get("horizon", 20)
+        self.replan_interval: int = config.get("replan_interval", 5)
+        self.solver_time_limit: float = config.get("solver_time_limit", 0.5)
         self.objective_weights: Dict[str, float] = config.get("objective_weights", {
             "tardiness": 10.0,
             "transport_cost": 1.0,
             "idle_time": 5.0,
-            "maintenance_opportunity": 2.0,
+            "maintenance_opportunity": 0.5,
         })
         self._steps_since_plan: int = 0
         self._cached_plan: List[Dict[str, Any]] = []
         self._plan_index: int = 0
+        self._last_n_reqs: int = 0  # Track request count for reactive replanning
 
     def reset(self) -> None:
         """Reset planner state for a new episode."""
         self._steps_since_plan = 0
         self._cached_plan = []
         self._plan_index = 0
+        self._last_n_reqs = 0
 
     def decide(self, env) -> Dict[str, Any]:
         """Select next action using MIP solution.
@@ -97,17 +99,33 @@ class PuLPMIPScheduler:
         if not HAS_PULP:
             return self._fallback_edd(env)
 
-        # Re-solve if needed
+        # Count current requests to detect new work
+        trans_reqs = getattr(env, "transport_requests", [])
+        erect_reqs = getattr(env, "erection_requests", []) or getattr(env, "lift_requests", [])
+        n_erect = len(erect_reqs)
+        current_n_reqs = len(trans_reqs) + n_erect
+
+        # When erection requests exist, use fast EDD path for immediate crane
+        # dispatch — avoids solver overhead on time-critical erection decisions
+        if n_erect > 0:
+            edd_action = self._fallback_edd(env)
+            if edd_action.get("action_type") == 1:
+                self._steps_since_plan += 1
+                return edd_action
+
+        # Replan on interval or when request count changes
         needs_replan = (
             not self._cached_plan
             or self._plan_index >= len(self._cached_plan)
             or self._steps_since_plan >= self.replan_interval
+            or current_n_reqs != self._last_n_reqs
         )
 
         if needs_replan:
             self._cached_plan = self._solve(env)
             self._plan_index = 0
             self._steps_since_plan = 0
+            self._last_n_reqs = current_n_reqs
 
         # Execute next action from plan
         if self._plan_index < len(self._cached_plan):
@@ -117,7 +135,7 @@ class PuLPMIPScheduler:
             return self._validate_action(action, env)
 
         self._steps_since_plan += 1
-        return _hold_action()
+        return self._fallback_edd(env)
 
     # ------------------------------------------------------------------
     # MIP construction
@@ -171,12 +189,24 @@ class PuLPMIPScheduler:
                     y[r, c, t] = pulp.LpVariable(f"y_{r}_{c}_{t}", cat="Binary")
 
         # m[e, t] = 1 if equipment e is under maintenance at time t
-        # Equipment index: 0..n_spmts-1 are SPMTs, n_spmts..n_spmts+n_cranes-1 are cranes
+        # Only create maintenance vars for equipment below health threshold
         n_equip = n_spmts + n_cranes
+        maint_candidates = set()
+        for e in range(n_equip):
+            if e < n_spmts:
+                health = spmts[e].get_min_health()
+            else:
+                health = cranes[e - n_spmts].get_min_health()
+            if health < 30.0:
+                maint_candidates.add(e)
+
         m = {}
         for e in range(n_equip):
             for t in range(H):
-                m[e, t] = pulp.LpVariable(f"m_{e}_{t}", cat="Binary")
+                if e in maint_candidates:
+                    m[e, t] = pulp.LpVariable(f"m_{e}_{t}", cat="Binary")
+                else:
+                    m[e, t] = pulp.LpVariable(f"m_{e}_{t}", cat="Binary", upBound=0)
 
         # ---- Constraints ----
 
@@ -258,28 +288,28 @@ class PuLPMIPScheduler:
                     w.get("transport_cost", 1.0) * travel * x[b, s, 0]
                 )
 
-        # 3) Idle time: penalize empty time steps (encourage assignments)
+        # 3) Idle time: encourage productive assignments (transport + erection only)
         for t in range(H):
-            total_assigned = (
+            productive_assigned = (
                 pulp.lpSum(x[b, s, t] for b in range(n_trans) for s in range(n_spmts))
                 + pulp.lpSum(y[r, c, t] for r in range(n_erect) for c in range(n_cranes))
-                + pulp.lpSum(m[e, t] for e in range(n_equip))
             )
-            # Negate to penalize fewer assignments (minimize negative = maximize)
-            obj_terms.append(-w.get("idle_time", 5.0) * total_assigned)
+            # Negate to penalize fewer productive assignments (minimize negative = maximize)
+            obj_terms.append(-w.get("idle_time", 5.0) * productive_assigned)
 
-        # 4) Maintenance opportunity: encourage maintenance for low-health equipment
+        # 4) Maintenance opportunity: only encourage for genuinely low-health equipment
         for e in range(n_equip):
             if e < n_spmts:
                 health = spmts[e].get_min_health()
             else:
                 health = cranes[e - n_spmts].get_min_health()
-            # Higher reward for maintaining lower-health equipment
-            maint_benefit = max(0.0, (50.0 - health) / 50.0)
-            for t in range(H):
-                obj_terms.append(
-                    -w.get("maintenance_opportunity", 2.0) * maint_benefit * m[e, t]
-                )
+            # Only incentivize maintenance below 30% health
+            if health < 30.0:
+                maint_benefit = (30.0 - health) / 30.0
+                for t in range(H):
+                    obj_terms.append(
+                        -w.get("maintenance_opportunity", 0.5) * maint_benefit * m[e, t]
+                    )
 
         if obj_terms:
             prob += pulp.lpSum(obj_terms)
@@ -504,9 +534,9 @@ class PuLPMIPScheduler:
                         "equipment_idx": 0,
                     }
 
-        # Priority 3: maintenance
+        # Priority 3: maintenance (only for genuinely degraded equipment)
         for i, spmt in enumerate(spmts):
-            if _is_idle(spmt) and spmt.get_min_health() < 40.0:
+            if _is_idle(spmt) and spmt.get_min_health() < 30.0:
                 return {
                     "action_type": 2,
                     "equipment_idx": i,

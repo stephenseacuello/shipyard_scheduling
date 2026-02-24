@@ -131,16 +131,30 @@ class GAScheduler:
             crane_idx = chromosome.crane_assignments[block_idx]
 
             # Create action based on current state
-            # This is simplified - actual implementation would need to handle
-            # the full action space and environment dynamics
-            action = {
-                "action_type": 0,  # SPMT dispatch
-                "spmt": int(spmt_idx),
-                "request": int(block_idx) % len(getattr(env, "transport_requests", [1])),
-                "crane": int(crane_idx),
-                "lift": 0,
-                "equipment": 0,
-            }
+            trans_reqs = getattr(env, "transport_requests", [])
+            n_trans = len(trans_reqs)
+
+            if n_trans == 0:
+                # No transport requests — hold
+                action = {
+                    "action_type": 3,
+                    "spmt_idx": 0,
+                    "request_idx": 0,
+                    "crane_idx": 0,
+                    "lift_idx": 0,
+                    "erection_idx": 0,
+                    "equipment_idx": 0,
+                }
+            else:
+                action = {
+                    "action_type": 0,
+                    "spmt_idx": int(spmt_idx) % self.n_spmts,
+                    "request_idx": int(block_idx) % n_trans,
+                    "crane_idx": int(crane_idx) % self.n_cranes,
+                    "lift_idx": 0,
+                    "erection_idx": 0,
+                    "equipment_idx": 0,
+                }
 
             try:
                 _, reward, terminated, truncated, info = env.step(action)
