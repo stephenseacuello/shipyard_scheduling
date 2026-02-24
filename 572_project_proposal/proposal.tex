@@ -1,0 +1,171 @@
+\documentclass[12pt,letterpaper]{article}
+
+% Packages
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{titlesec}
+\usepackage{parskip}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+
+% Formatting
+\hypersetup{colorlinks=true, linkcolor=blue, urlcolor=blue, citecolor=blue}
+\titleformat{\section}{\large\bfseries}{Section \thesection:}{0.5em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{}{0em}{}
+
+% Title
+\title{%
+  \textbf{ISE 572: Industry 4.0 Machine Learning} \\[0.3em]
+  \Large Final Project Proposal \\[0.5em]
+  \large Machine Learning for Shipyard Production Scheduling: \\
+  Neural Network-Based Block Sequencing and Processing Time Prediction
+}
+\author{Stephen Eacuello \and Steve (Partner)}
+\date{February 2026}
+
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+
+% ============================================================
+\section{Problem Statement}
+% ============================================================
+
+\subsection{The Industry 4.0 Problem}
+
+Modern shipyards such as Hyundai Heavy Industries (HHI) Ulsan must coordinate hundreds of steel blocks through a multi-stage production pipeline involving steel cutting, panel assembly, block assembly, outfitting, painting, and final erection at the dry dock. Each block is transported by self-propelled modular transporters (SPMTs) and lifted into position by goliath cranes, all while respecting structural precedence constraints, equipment availability, and ship delivery deadlines. This is a large-scale, real-time \textbf{process optimization} problem squarely within the Industry~4.0 domain of smart manufacturing.
+
+\subsection{Why This Problem Matters}
+
+Poor scheduling decisions cascade through the entire production line. An idle goliath crane costs an estimated \$10,000--15,000 per day in lost throughput. Late block delivery to the dock delays ship launches, triggering contractual penalties that can reach millions of dollars per vessel. Meanwhile, equipment failures from deferred maintenance cause unplanned downtime that disrupts the entire yard. Current practice relies on experienced human planners using heuristic rules and spreadsheets, an approach that does not scale as yards handle 5--10 concurrent ship builds with 200--400 blocks each.
+
+Beyond direct financial costs, inefficient scheduling increases energy consumption (unnecessary SPMT travel, idle crane operation), extends worker exposure to hazardous environments, and creates downstream bottlenecks in outfitting and painting that compound over weeks. The International Maritime Organization's push toward shorter build cycles for next-generation LNG carriers and container ships makes this optimization increasingly urgent.
+
+\subsection{Industry Domain}
+
+This project applies to the \textbf{heavy manufacturing and maritime logistics} sector, specifically shipbuilding production management. The problem generalizes to any large-scale job-shop scheduling environment with heterogeneous equipment, precedence constraints, and stochastic processing times---including aerospace assembly, modular construction, and semiconductor fabrication.
+
+% ============================================================
+\section{Data Considerations}
+% ============================================================
+
+\subsection{Required Data}
+
+The model requires four categories of data, all of which exist or are generated within our simulation framework:
+
+\textbf{Equipment telemetry and status data.} Real-time position, operational status (idle, transporting, lifting, under maintenance), and degradation health indicators for each SPMT and goliath crane. In a production deployment, this data would come from IoT sensors, GPS trackers, and SCADA systems installed on yard equipment. Our simulation models 6~SPMTs and 9~goliath cranes with realistic status transitions and Bayesian health degradation.
+
+\textbf{Block production records.} For each of the $\sim$50--200 blocks per ship: current production stage, processing start/end times, assigned facility, weight, dimensions, and structural precedence relationships (which blocks must be placed before others). In practice, this comes from the yard's Manufacturing Execution System (MES) and ERP databases. Our environment tracks these as structured entities with full stage progression.
+
+\textbf{Plate-level decomposition geometry.} Each block is composed of 10--50 individual steel plates characterized by dimensions (length, width, thickness in mm), plate type (flat, curved, stiffened, bracket, bulkhead, shell), number of stiffeners, curvature radius, and material grade. This data originates from 3D CAD/CAM design software (e.g., AVEVA Marine, NAPA) and is exported via our partner Steve's decomposition scripts as structured JSON. These geometric features are critical inputs for predicting per-stage processing times---a curved plate with stiffeners takes significantly longer to cut and weld than a flat plate.
+
+\textbf{Ship schedule and constraint data.} Delivery deadlines, dock assignments, and the mapping between blocks and ships. Sourced from project management and contract databases.
+
+\subsection{Data Challenges}
+
+\textbf{Sim-to-real gap.} Our primary challenge is that we train on simulated data with synthetic plate geometries while real yards have noisy, heterogeneous data sources. We address this through a calibration pipeline that fits regression coefficients from observed processing times, and domain randomization that varies processing parameters during training to improve robustness.
+
+\textbf{Plate data availability.} Full plate-level decomposition data requires CAD model post-processing that many yards do not routinely perform for scheduling purposes. We handle this with a synthetic plate generation fallback that estimates plate counts and geometry from block weight and type, producing physically plausible distributions validated against published shipbuilding references.
+
+\textbf{Sparse reward signal.} Block completions occur infrequently (every $\sim$50--100 scheduling steps), making it difficult to attribute credit to individual decisions. This is a classic challenge in sequential decision-making that we address through reward shaping and dense intermediate signals (transport completion, stage advancement).
+
+% ============================================================
+\section{Proposed ML Solution}
+% ============================================================
+
+\subsection{Problem Formulation}
+
+This project addresses \textbf{three interconnected ML problems}, each mapping to techniques covered in the course:
+
+\subsubsection*{1.\ \ Regression: Processing Time Prediction from Plate Geometry}
+
+Given a block's plate-level characteristics, we predict the processing time (in hours) at each production stage. This is a \textbf{multivariate linear regression} problem:
+\begin{equation}
+  t_{\text{stage}} = \beta_0 + \beta_1 \cdot n_{\text{plates}} + \beta_2 \cdot n_{\text{curved}} + \beta_3 \cdot n_{\text{stiffened}} + \beta_4 \cdot A_{\text{total}} + \beta_5 \cdot L_{\text{weld}}
+  \label{eq:regression}
+\end{equation}
+where the features are plate count, curved plate count, stiffened plate count, total plate area ($\text{m}^2$), and total weld length (m). Coefficients are fitted per stage (steel cutting, panel assembly, block assembly, etc.) using least-squares optimization with non-negativity constraints. This replaces the current practice of using historical averages or lognormal distributions, giving geometry-informed estimates. Steve's plate decomposition data from CAD models provides the ground-truth features for fitting these models. We validate with $R^2$, RMSE, and MAE metrics using cross-validation across blocks.
+
+\subsubsection*{2.\ \ Artificial Neural Networks: Scheduling Policy and Value Estimation}
+
+The core scheduling agent uses a deep \textbf{actor-critic neural network} architecture:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \textbf{Actor network (policy):} A multi-layer perceptron (MLP) with ReLU activations that takes a learned state representation and outputs probability distributions over discrete actions. The network has a shared 2-layer trunk (256 hidden units) that branches into multiple classification heads: action type selection (4-way: dispatch SPMT, dispatch crane, schedule maintenance, or hold), equipment selection (which SPMT or crane), and target selection (which block/request to service). Each head applies softmax activation to produce a categorical probability distribution. Action masking sets infeasible actions to zero probability before sampling.
+
+  \item \textbf{Critic network (value function):} A separate MLP head that estimates the expected future reward from the current state, used to compute advantage estimates for stable policy gradient training. The critic outputs a single scalar value via a 2-layer network ($256 \to 128 \to 1$).
+\end{itemize}
+
+The policy is trained using Proximal Policy Optimization (PPO) with clipped surrogate objectives, and alternatively with Soft Actor-Critic (SAC) using separate Q-networks for value estimation. We also employ DAgger (Dataset Aggregation), an imitation learning technique where the neural network learns from an expert scheduling heuristic and iteratively improves by collecting on-policy data.
+
+\subsubsection*{3.\ \ Graph Neural Networks: Relational State Encoding (CNN Analog)}
+
+The shipyard state has inherent graph structure---blocks connect to facilities, SPMTs connect to blocks they can transport, cranes connect to blocks they can lift, and blocks have precedence relationships with each other. We encode this using a \textbf{heterogeneous graph neural network (GNN)} with Graph Attention (GAT) convolution layers.
+
+GNNs perform \emph{graph convolutions} that are the relational analog of spatial convolutions in CNNs: where a CNN slides a learned filter over a pixel grid to aggregate local spatial features, a GNN passes learned messages along graph edges to aggregate local neighborhood features. Our architecture uses:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \textbf{Input projection layers:} Separate linear encodings per node type (blocks: 16~features including 4~plate-derived features, SPMTs: 10~features, cranes: 7~features, facilities: 3~features).
+  \item \textbf{Message-passing layers:} Two layers of multi-head graph attention convolution (4~attention heads per layer) with residual connections and layer normalization, operating over 8~edge types (e.g., ``block needs\_transport SPMT'', ``block precedes block'').
+  \item \textbf{Global pooling:} Mean pooling per node type, concatenated into a fixed-size state embedding (512~dimensions) that feeds the actor-critic ANNs described above.
+\end{itemize}
+
+The 4~plate-derived features added by Steve's decomposition---normalized plate count, normalized plate area, percent curved plates, and percent stiffened plates---give the GNN richer block representations that capture manufacturing complexity beyond simple weight and size.
+
+\subsection{Baseline Comparisons}
+
+We compare the neural network approach against traditional operations research methods to establish the value added by the learned policy:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \textbf{Earliest Due Date (EDD):} Rule-based heuristic (no ML)
+  \item \textbf{Mixed-Integer Programming (MIP):} PuLP CBC solver with rolling-horizon optimization
+  \item \textbf{Genetic Algorithm:} Evolutionary optimization with permutation chromosomes
+  \item \textbf{Model Predictive Control:} CP-SAT constraint programming
+\end{itemize}
+
+% ============================================================
+\section{Expected Impact}
+% ============================================================
+
+\subsection{Industry Benefits}
+
+A trained scheduling policy that outperforms expert heuristics would directly reduce block throughput time, equipment idle time, and delivery tardiness. Based on our preliminary experiments, the Expert EDD baseline achieves $\sim$32 blocks erected per episode (300~time steps) while the MIP optimizer achieves $\sim$25 blocks. An RL-trained policy that matches or exceeds Expert performance while also optimizing maintenance timing would provide:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \textbf{Reduced idle costs:} Fewer idle crane-hours through better sequencing.
+  \item \textbf{Faster throughput:} More blocks completed per unit time by optimizing SPMT routing and crane assignment jointly.
+  \item \textbf{Predictive maintenance integration:} Scheduling maintenance during natural lulls rather than fixed intervals, reducing unplanned downtime.
+  \item \textbf{Accurate time estimates:} Plate-geometry-driven processing time regression replacing rough historical averages, enabling tighter schedule planning.
+\end{itemize}
+
+The plate-level processing time model is independently valuable: giving planners per-stage time estimates based on actual block geometry rather than yard averages enables better capacity planning even without the RL policy.
+
+\subsection{Evaluation Metrics}
+
+We evaluate the system using metrics that are standard in both scheduling research and shipyard operations:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Metric} & \textbf{Definition} & \textbf{Target} \\
+\midrule
+Throughput & Blocks erected per time unit & Maximize ($\geq$ Expert) \\
+Total tardiness & $\sum(\text{completion} - \text{due date})$ for late blocks & Minimize \\
+Equipment utilization & Fraction of time equipment is productively busy & $> 70\%$ \\
+Makespan & Time to complete all blocks for a ship & Minimize \\
+Processing time $R^2$ & Regression accuracy of plate-based predictions & $> 0.7$ (real data) \\
+RMSE & Root mean squared error of time predictions & $< 2$ hours/stage \\
+\bottomrule
+\end{tabular}
+\caption{Evaluation metrics and targets.}
+\label{tab:metrics}
+\end{table}
+
+Additionally, we report wall-clock computation time per decision to verify the policy is fast enough for real-time deployment (target $< 10$\,ms per action, vs.\ seconds for MIP solvers).
+
+\end{document}
