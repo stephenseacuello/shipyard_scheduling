@@ -68,7 +68,7 @@ where the features are plate count, curved plate count, stiffened plate count, t
 
 The core scheduling agent uses a deep **actor-critic neural network** architecture:
 
-- **Actor network (policy):** A multi-layer perceptron (MLP) with ReLU activations that takes a learned state representation and outputs probability distributions over discrete actions. The network has a shared 2-layer trunk (256 hidden units) that branches into multiple classification heads: action type selection (4-way: dispatch SPMT, dispatch crane, schedule maintenance, or hold), equipment selection (which SPMT or crane), and target selection (which block/request to service). Each head applies softmax activation to produce a categorical probability distribution. Action masking sets infeasible actions to zero probability before sampling.
+- **Actor network (policy):** A multi-layer perceptron (MLP) with ReLU activations that takes a learned state representation and outputs probability distributions over discrete actions. The network has a shared 2-layer trunk (256 hidden units) that branches into multiple classification heads: action type selection (4-way: dispatch SPMT, dispatch crane, schedule maintenance, or hold), equipment selection (which SPMT or crane), and target selection (which block/request to service). Each head applies softmax activation to produce a categorical probability distribution---this is a direct generalization of **logistic regression** to the multi-class setting, where a single-output sigmoid (binary logistic regression) extends to a K-way softmax over action categories. Additionally, the agent includes a binary **logistic regression classifier** (single sigmoid output) that predicts whether a block is ready to advance to its next production stage, used to gate dispatching decisions. Action masking sets infeasible actions to zero probability before sampling.
 
 - **Critic network (value function):** A separate MLP head that estimates the expected future reward from the current state, used to compute advantage estimates for stable policy gradient training. The critic outputs a single scalar value via a 2-layer network (256 -> 128 -> 1).
 
@@ -76,9 +76,9 @@ The policy is trained using Proximal Policy Optimization (PPO) with clipped surr
 
 **3. Graph Neural Networks: Relational State Encoding (CNN Analog)**
 
-The shipyard state has inherent graph structure---blocks connect to facilities, SPMTs connect to blocks they can transport, cranes connect to blocks they can lift, and blocks have precedence relationships with each other. We encode this using a **heterogeneous graph neural network (GNN)** with Graph Attention (GAT) convolution layers.
+The shipyard state has inherent graph structure---blocks connect to facilities, SPMTs connect to blocks they can transport, cranes connect to blocks they can lift, and blocks have precedence relationships with each other. A shipyard can also be represented as a 2D spatial grid (the physical yard map with equipment positions on a coordinate plane), making it amenable to standard **CNN** feature extraction over spatial tiles [3]. However, critical relationships---structural precedence between blocks, equipment-to-task eligibility, facility capacity constraints---are *non-spatial* and cannot be captured by a fixed-size convolutional kernel on a pixel grid. We therefore use a **heterogeneous graph neural network (GNN)** with Graph Attention (GAT) convolution layers, which *generalizes* the CNN to irregular, relational topologies while retaining the same core mechanism of learned local aggregation [2].
 
-GNNs perform *graph convolutions* that are the relational analog of spatial convolutions in CNNs: where a CNN slides a learned filter over a pixel grid to aggregate local spatial features, a GNN passes learned messages along graph edges to aggregate local neighborhood features. Our architecture uses:
+Concretely, GNNs perform *graph convolutions* that are the relational analog of spatial convolutions in CNNs: where a CNN slides a learned filter over a pixel grid to aggregate local spatial features, a GNN passes learned messages along graph edges to aggregate local neighborhood features. Our architecture uses:
 
 - **Input projection layers:** Separate linear encodings per node type (blocks: 16 features including 4 plate-derived features, SPMTs: 10 features, cranes: 7 features, facilities: 3 features)
 - **Message-passing layers:** Two layers of multi-head graph attention convolution (4 attention heads per layer) with residual connections and layer normalization, operating over 8 edge types (e.g., "block needs_transport SPMT", "block precedes block")
@@ -125,3 +125,13 @@ We evaluate the system using metrics that are standard in both scheduling resear
 | **RMSE** | Root mean squared error of time predictions (hours) | Target < 2 hours per stage |
 
 Additionally, we report wall-clock computation time per decision to verify the policy is fast enough for real-time deployment (target < 10ms per action, vs. seconds for MIP solvers).
+
+---
+
+## References
+
+1. J. Schulman, F. Wolski, P. Dhariwal, A. Radford, and O. Klimov, "Proximal policy optimization algorithms," *arXiv preprint arXiv:1707.06347*, 2017.
+2. M. M. Bronstein, J. Bruna, T. Cohen, and P. Velickovic, "Geometric deep learning: Grids, groups, graphs, and geodesics," *arXiv preprint arXiv:2104.13478*, 2021.
+3. L. Wang, Z. Pan, and J. Wang, "A review of reinforcement learning based intelligent optimization for manufacturing scheduling," *Complex & Intelligent Systems*, vol. 7, no. 2, pp. 597-618, 2021.
+4. S. Ross, G. J. Gordon, and D. Bagnell, "A reduction of imitation learning and structured prediction to no-regret online learning," in *Proc. AISTATS*, pp. 627-635, 2011.
+5. J.-G. Shin, S. J. Lee, and Y. Kim, "A study on block assembly planning using simulation-based optimization in shipbuilding," *Journal of Ship Production and Design*, vol. 35, no. 1, pp. 60-71, 2019.

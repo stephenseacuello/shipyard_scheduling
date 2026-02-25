@@ -95,7 +95,7 @@ where the features are plate count, curved plate count, stiffened plate count, t
 The core scheduling agent uses a deep \textbf{actor-critic neural network} architecture:
 
 \begin{itemize}[leftmargin=1.5em]
-  \item \textbf{Actor network (policy):} A multi-layer perceptron (MLP) with ReLU activations that takes a learned state representation and outputs probability distributions over discrete actions. The network has a shared 2-layer trunk (256 hidden units) that branches into multiple classification heads: action type selection (4-way: dispatch SPMT, dispatch crane, schedule maintenance, or hold), equipment selection (which SPMT or crane), and target selection (which block/request to service). Each head applies softmax activation to produce a categorical probability distribution. Action masking sets infeasible actions to zero probability before sampling.
+  \item \textbf{Actor network (policy):} A multi-layer perceptron (MLP) with ReLU activations that takes a learned state representation and outputs probability distributions over discrete actions. The network has a shared 2-layer trunk (256 hidden units) that branches into multiple classification heads: action type selection (4-way: dispatch SPMT, dispatch crane, schedule maintenance, or hold), equipment selection (which SPMT or crane), and target selection (which block/request to service). Each head applies softmax activation to produce a categorical probability distribution---this is a direct generalization of \textbf{logistic regression} to the multi-class setting, where a single-output sigmoid (binary logistic regression) extends to a $K$-way softmax over action categories. Additionally, the agent includes a binary \textbf{logistic regression classifier} (single sigmoid output) that predicts whether a block is ready to advance to its next production stage, used to gate dispatching decisions. Action masking sets infeasible actions to zero probability before sampling.
 
   \item \textbf{Critic network (value function):} A separate MLP head that estimates the expected future reward from the current state, used to compute advantage estimates for stable policy gradient training. The critic outputs a single scalar value via a 2-layer network ($256 \to 128 \to 1$).
 \end{itemize}
@@ -104,9 +104,9 @@ The policy is trained using Proximal Policy Optimization (PPO) with clipped surr
 
 \subsubsection*{3.\ \ Graph Neural Networks: Relational State Encoding (CNN Analog)}
 
-The shipyard state has inherent graph structure---blocks connect to facilities, SPMTs connect to blocks they can transport, cranes connect to blocks they can lift, and blocks have precedence relationships with each other. We encode this using a \textbf{heterogeneous graph neural network (GNN)} with Graph Attention (GAT) convolution layers.
+The shipyard state has inherent graph structure---blocks connect to facilities, SPMTs connect to blocks they can transport, cranes connect to blocks they can lift, and blocks have precedence relationships with each other. A shipyard can also be represented as a 2D spatial grid (the physical yard map with equipment positions on a coordinate plane), making it amenable to standard \textbf{CNN} feature extraction over spatial tiles~\cite{wang2021cnn}. However, critical relationships---structural precedence between blocks, equipment-to-task eligibility, facility capacity constraints---are \emph{non-spatial} and cannot be captured by a fixed-size convolutional kernel on a pixel grid. We therefore use a \textbf{heterogeneous graph neural network (GNN)} with Graph Attention (GAT) convolution layers, which \emph{generalizes} the CNN to irregular, relational topologies while retaining the same core mechanism of learned local aggregation~\cite{bronstein2021geometric}.
 
-GNNs perform \emph{graph convolutions} that are the relational analog of spatial convolutions in CNNs: where a CNN slides a learned filter over a pixel grid to aggregate local spatial features, a GNN passes learned messages along graph edges to aggregate local neighborhood features. Our architecture uses:
+Concretely, GNNs perform \emph{graph convolutions} that are the relational analog of spatial convolutions in CNNs: where a CNN slides a learned filter over a pixel grid to aggregate local spatial features, a GNN passes learned messages along graph edges to aggregate local neighborhood features. Our architecture uses:
 
 \begin{itemize}[leftmargin=1.5em]
   \item \textbf{Input projection layers:} Separate linear encodings per node type (blocks: 16~features including 4~plate-derived features, SPMTs: 10~features, cranes: 7~features, facilities: 3~features).
@@ -150,15 +150,16 @@ We evaluate the system using metrics that are standard in both scheduling resear
 
 \begin{table}[h]
 \centering
-\begin{tabular}{@{}lll@{}}
+\small
+\begin{tabular}{@{}p{3.2cm}p{6.5cm}p{4.2cm}@{}}
 \toprule
 \textbf{Metric} & \textbf{Definition} & \textbf{Target} \\
 \midrule
 Throughput & Blocks erected per time unit & Maximize ($\geq$ Expert) \\
 Total tardiness & $\sum(\text{completion} - \text{due date})$ for late blocks & Minimize \\
-Equipment utilization & Fraction of time equipment is productively busy & $> 70\%$ \\
+Equip.\ utilization & Fraction of time equipment is productively busy & $> 70\%$ \\
 Makespan & Time to complete all blocks for a ship & Minimize \\
-Processing time $R^2$ & Regression accuracy of plate-based predictions & $> 0.7$ (real data) \\
+Proc.\ time $R^2$ & Regression accuracy of plate-based predictions & $> 0.7$ (real data) \\
 RMSE & Root mean squared error of time predictions & $< 2$ hours/stage \\
 \bottomrule
 \end{tabular}
@@ -167,5 +168,38 @@ RMSE & Root mean squared error of time predictions & $< 2$ hours/stage \\
 \end{table}
 
 Additionally, we report wall-clock computation time per decision to verify the policy is fast enough for real-time deployment (target $< 10$\,ms per action, vs.\ seconds for MIP solvers).
+
+% ============================================================
+% References
+% ============================================================
+
+\begin{thebibliography}{9}
+
+\bibitem{schulman2017ppo}
+J.~Schulman, F.~Wolski, P.~Dhariwal, A.~Radford, and O.~Klimov,
+``Proximal policy optimization algorithms,''
+\textit{arXiv preprint arXiv:1707.06347}, 2017.
+
+\bibitem{bronstein2021geometric}
+M.~M.~Bronstein, J.~Bruna, T.~Cohen, and P.~Veli\v{c}kovi\'{c},
+``Geometric deep learning: Grids, groups, graphs, and geodesics,''
+\textit{arXiv preprint arXiv:2104.13478}, 2021.
+
+\bibitem{wang2021cnn}
+L.~Wang, Z.~Pan, and J.~Wang,
+``A review of reinforcement learning based intelligent optimization for manufacturing scheduling,''
+\textit{Complex \& Intelligent Systems}, vol.~7, no.~2, pp.~597--618, 2021.
+
+\bibitem{ross2011dagger}
+S.~Ross, G.~J.~Gordon, and D.~Bagnell,
+``A reduction of imitation learning and structured prediction to no-regret online learning,''
+in \textit{Proc.\ AISTATS}, pp.~627--635, 2011.
+
+\bibitem{shin2019block}
+J.-G.~Shin, S.~J.~Lee, and Y.~Kim,
+``A study on block assembly planning using simulation-based optimization in shipbuilding,''
+\textit{Journal of Ship Production and Design}, vol.~35, no.~1, pp.~60--71, 2019.
+
+\end{thebibliography}
 
 \end{document}
