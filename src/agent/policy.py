@@ -72,6 +72,14 @@ class ActorCriticPolicy(nn.Module):
         self.material_head = nn.Linear(hidden_dim, max(n_inventory, 1))
         self.labor_pool_head = nn.Linear(hidden_dim, max(n_labor_pools, 1))
         self.target_block_head = nn.Linear(hidden_dim, max(max_requests, 1))
+        # Readiness gate: binary logistic regression classifier.
+        # Predicts P(block is ready to advance to next stage) as a single
+        # sigmoid output.  Used to modulate dispatch probabilities — if the
+        # gate predicts low readiness, transport/erection actions for that
+        # block are down-weighted.
+        self.readiness_gate = nn.Sequential(
+            nn.Linear(hidden_dim, 1),  # single logit → sigmoid = logistic regression
+        )
         # Critic head
         self.critic = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim // 2),
@@ -83,6 +91,13 @@ class ActorCriticPolicy(nn.Module):
         self, state: torch.Tensor, mask: Dict[str, torch.Tensor] | None = None
     ) -> Tuple[Dict[str, Categorical], torch.Tensor]:
         features = self.shared(state)
+
+        # Readiness gate: logistic regression P(ready to dispatch)
+        # Positive readiness boosts dispatch actions (types 0, 1);
+        # negative readiness suppresses them in favor of hold/maintenance.
+        readiness_logit = self.readiness_gate(features)  # (batch, 1) or (1,)
+        self._last_readiness_prob = torch.sigmoid(readiness_logit)
+
         # Compute logits for all heads
         logits = {
             "action_type": self.action_type_head(features),
@@ -96,6 +111,26 @@ class ActorCriticPolicy(nn.Module):
             "labor_pool": self.labor_pool_head(features),
             "target_block": self.target_block_head(features),
         }
+
+        # Modulate dispatch action logits by readiness gate.
+        # When readiness is low (sigmoid → 0), the logit bias is negative,
+        # discouraging dispatch; when high (sigmoid → 1), bias is ~0.
+        readiness_bias = readiness_logit.squeeze(-1)  # (batch,) or scalar
+        at_logits = logits["action_type"]
+        if at_logits.dim() == 1:
+            # Single sample: at_logits is (n_action_types,)
+            at_logits = at_logits.clone()
+            at_logits[0] = at_logits[0] + readiness_bias  # SPMT dispatch
+            if at_logits.shape[0] > 1:
+                at_logits[1] = at_logits[1] + readiness_bias  # crane dispatch
+        else:
+            # Batch: at_logits is (batch, n_action_types)
+            at_logits = at_logits.clone()
+            at_logits[:, 0] = at_logits[:, 0] + readiness_bias
+            if at_logits.shape[1] > 1:
+                at_logits[:, 1] = at_logits[:, 1] + readiness_bias
+        logits["action_type"] = at_logits
+
         # Apply per-head masks
         if mask is not None:
             for key in logits:
