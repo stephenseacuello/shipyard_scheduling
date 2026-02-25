@@ -61,6 +61,64 @@ class RollingHorizonMPC:
         self._plan_index: int = 0
         self._steps_since_replan: int = 0
 
+    def _make_hold_action(self) -> Dict[str, Any]:
+        """Return a correctly-keyed hold action."""
+        return {
+            "action_type": 3,
+            "spmt_idx": 0, "request_idx": 0,
+            "crane_idx": 0, "lift_idx": 0, "erection_idx": 0,
+            "equipment_idx": 0,
+        }
+
+    def _edd_dispatch(self, env: "ShipyardEnv") -> Dict[str, Any]:
+        """Fast EDD-style dispatch for reactive decisions.
+
+        Prioritizes crane erection when available (critical path),
+        then SPMT transport, then hold.
+        """
+        # Priority 1: Erect blocks if crane requests available
+        erection_reqs = getattr(env, "erection_requests", [])
+        if erection_reqs:
+            cranes = env.entities.get("goliath_cranes", env.entities.get("cranes", []))
+            for ci, crane in enumerate(cranes):
+                if crane.status.name == "IDLE":
+                    # Find earliest-due erection request
+                    best_idx = 0
+                    best_due = float("inf")
+                    for ri, req in enumerate(erection_reqs):
+                        block = req if hasattr(req, "due_date") else None
+                        if block and block.due_date < best_due:
+                            best_due = block.due_date
+                            best_idx = ri
+                    return {
+                        "action_type": 1,
+                        "crane_idx": ci, "erection_idx": best_idx,
+                        "spmt_idx": 0, "request_idx": 0,
+                        "lift_idx": best_idx, "equipment_idx": 0,
+                    }
+
+        # Priority 2: Transport blocks if requests available
+        trans_reqs = getattr(env, "transport_requests", [])
+        if trans_reqs:
+            spmts = env.entities.get("spmts", [])
+            for si, spmt in enumerate(spmts):
+                if spmt.status.name == "IDLE":
+                    best_idx = 0
+                    best_due = float("inf")
+                    for ri, req in enumerate(trans_reqs):
+                        block = req if hasattr(req, "due_date") else None
+                        if block and block.due_date < best_due:
+                            best_due = block.due_date
+                            best_idx = ri
+                    return {
+                        "action_type": 0,
+                        "spmt_idx": si, "request_idx": best_idx,
+                        "crane_idx": 0, "lift_idx": 0, "erection_idx": 0,
+                        "equipment_idx": 0,
+                    }
+
+        return self._make_hold_action()
+
     def solve_window(
         self,
         env: "ShipyardEnv",
@@ -84,40 +142,52 @@ class RollingHorizonMPC:
         # Get current state
         blocks = list(env.entities.get("blocks", []))
         spmts = list(env.entities.get("spmts", []))
+        trans_reqs = getattr(env, "transport_requests", [])
         n_blocks = len(blocks)
         n_spmts = len(spmts)
+        n_reqs = len(trans_reqs)
 
-        if n_blocks == 0 or n_spmts == 0:
-            return [{"action_type": 3}] * horizon  # Hold
+        if n_blocks == 0 or n_spmts == 0 or n_reqs == 0:
+            return [self._make_hold_action()] * horizon
 
         # Decision variables
-        # x[b, s, t] = 1 if block b is transported by SPMT s at time t
+        # x[r, s, t] = 1 if request r is dispatched to SPMT s at time t
+        n_plan_reqs = min(n_reqs, horizon)
         x = {}
-        for b in range(min(n_blocks, horizon)):
+        for r in range(n_plan_reqs):
             for s in range(n_spmts):
                 for t in range(horizon):
-                    x[b, s, t] = model.NewBoolVar(f"x_{b}_{s}_{t}")
+                    x[r, s, t] = model.NewBoolVar(f"x_{r}_{s}_{t}")
 
-        # Constraints
-        # Each block transported at most once in horizon
-        for b in range(min(n_blocks, horizon)):
-            model.Add(sum(x[b, s, t] for s in range(n_spmts) for t in range(horizon)) <= 1)
+        # Constraints: each request dispatched at most once
+        for r in range(n_plan_reqs):
+            model.Add(sum(x[r, s, t] for s in range(n_spmts) for t in range(horizon)) <= 1)
 
-        # SPMT can only transport one block at a time
+        # SPMT handles one request per timestep
         for s in range(n_spmts):
             for t in range(horizon):
-                model.Add(sum(x[b, s, t] for b in range(min(n_blocks, horizon))) <= 1)
+                model.Add(sum(x[r, s, t] for r in range(n_plan_reqs)) <= 1)
 
-        # Simple objective: minimize completion times
-        completion_times = []
-        for b in range(min(n_blocks, horizon)):
+        # Objective: dispatch early, prefer earliest-due requests
+        obj_terms = []
+        for r in range(n_plan_reqs):
+            req = trans_reqs[r]
+            due_weight = 1.0
+            if hasattr(req, "due_date"):
+                # Lower due_date = higher urgency = lower weight multiplier
+                due_weight = max(0.1, req.due_date - getattr(env, "sim_time", 0)) / 1000.0
             for s in range(n_spmts):
                 for t in range(horizon):
-                    # Penalize later transport times
-                    completion_times.append(t * x[b, s, t])
+                    obj_terms.append(int((t + 1) * due_weight * 10) * x[r, s, t])
 
-        if completion_times:
-            model.Minimize(sum(completion_times))
+        # Bonus for actually dispatching (negative cost = encouragement)
+        for r in range(n_plan_reqs):
+            for s in range(n_spmts):
+                for t in range(horizon):
+                    obj_terms.append(-100 * x[r, s, t])
+
+        if obj_terms:
+            model.Minimize(sum(obj_terms))
 
         # Solve
         solver = cp_model.CpSolver()
@@ -128,18 +198,17 @@ class RollingHorizonMPC:
         schedule = []
         if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
             for t in range(horizon):
-                action = {"action_type": 3}  # Default: hold
+                action = self._make_hold_action()
 
-                for b in range(min(n_blocks, horizon)):
+                for r in range(n_plan_reqs):
                     for s in range(n_spmts):
-                        if solver.Value(x[b, s, t]) == 1:
+                        if solver.Value(x[r, s, t]) == 1:
                             action = {
                                 "action_type": 0,
-                                "spmt": s,
-                                "request": b % max(1, len(getattr(env, "transport_requests", [1]))),
-                                "crane": 0,
-                                "lift": 0,
-                                "equipment": 0,
+                                "spmt_idx": s,
+                                "request_idx": r % max(1, n_reqs),
+                                "crane_idx": 0, "lift_idx": 0,
+                                "erection_idx": 0, "equipment_idx": 0,
                             }
                             break
                     if action["action_type"] == 0:
@@ -147,7 +216,6 @@ class RollingHorizonMPC:
 
                 schedule.append(action)
         else:
-            # Fallback to greedy
             schedule = self._fallback_greedy(env, horizon)
 
         return schedule
@@ -159,25 +227,16 @@ class RollingHorizonMPC:
     ) -> List[Dict]:
         """Greedy fallback when optimization fails."""
         schedule = []
-        spmts = list(env.entities.get("spmts", []))
-
-        for t in range(horizon):
-            # Cycle through SPMTs
-            spmt_idx = t % max(1, len(spmts))
-            action = {
-                "action_type": 0 if t % 3 != 2 else 3,  # Dispatch or hold
-                "spmt": spmt_idx,
-                "request": t % max(1, len(getattr(env, "transport_requests", [1]))),
-                "crane": 0,
-                "lift": 0,
-                "equipment": 0,
-            }
-            schedule.append(action)
-
+        for _ in range(horizon):
+            schedule.append(self._edd_dispatch(env))
         return schedule
 
     def step(self, env: "ShipyardEnv") -> Dict[str, Any]:
         """Get next action from MPC.
+
+        Uses a hybrid approach: MPC optimizes transport scheduling,
+        but crane erection requests are handled reactively via EDD
+        (same approach that works for PuLP).
 
         Args:
             env: Current environment state.
@@ -185,24 +244,40 @@ class RollingHorizonMPC:
         Returns:
             Action dictionary.
         """
-        # Check if replanning needed
-        if (not self._current_plan or
-            self._plan_index >= len(self._current_plan) or
-            self._steps_since_replan >= self.config.replanning_frequency):
+        # Priority 1: Handle erection requests immediately (critical path)
+        erection_reqs = getattr(env, "erection_requests", [])
+        if erection_reqs:
+            edd_action = self._edd_dispatch(env)
+            if edd_action.get("action_type") == 1:
+                self._steps_since_replan += 1
+                return edd_action
 
-            # Solve new plan
+        # Check if replanning needed
+        n_reqs = len(getattr(env, "transport_requests", []))
+        replan_needed = (
+            not self._current_plan
+            or self._plan_index >= len(self._current_plan)
+            or self._steps_since_replan >= self.config.replanning_frequency
+        )
+
+        if replan_needed:
             self._current_plan = self.solve_window(
                 env, self.config.prediction_horizon
             )
             self._plan_index = 0
             self._steps_since_replan = 0
 
-        # Get next action
+        # Get next action from plan
         if self._plan_index < len(self._current_plan):
             action = self._current_plan[self._plan_index]
             self._plan_index += 1
         else:
-            action = {"action_type": 3}  # Hold
+            action = self._make_hold_action()
+
+        # If the planned action is a transport but there are no requests, use EDD
+        trans_reqs = getattr(env, "transport_requests", [])
+        if action.get("action_type") == 0 and not trans_reqs:
+            action = self._edd_dispatch(env)
 
         self._steps_since_replan += 1
 
