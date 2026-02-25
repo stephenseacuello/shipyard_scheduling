@@ -2,7 +2,7 @@
 
 **Project Title:** Machine Learning for Shipyard Production Scheduling: Neural Network-Based Block Sequencing and Processing Time Prediction
 
-**Team Members:** Stephen Eacuello, Steve Blum
+**Team Members:** Stephen Eacuello, Steven Blum
 
 **Date:** February 2026
 
@@ -36,7 +36,7 @@ The model requires four categories of data, all of which exist or are generated 
 
 **Block production records.** For each of the ~50--200 blocks per ship: current production stage, processing start/end times, assigned facility, weight, dimensions, and structural precedence relationships (which blocks must be placed before others). In practice, this comes from the yard's Manufacturing Execution System (MES) and ERP databases. Our environment tracks these as structured entities with full stage progression.
 
-**Plate-level decomposition geometry.** Each block is composed of 10--50 individual steel plates characterized by dimensions (length, width, thickness in mm), plate type (flat, curved, stiffened, bracket, bulkhead, shell), number of stiffeners, curvature radius, and material grade. This data originates from 3D CAD/CAM design software (e.g., AVEVA Marine, NAPA) and is exported via our partner Steve's decomposition scripts as structured JSON. These geometric features are critical inputs for predicting per-stage processing times---a curved plate with stiffeners takes significantly longer to cut and weld than a flat plate.
+**Plate-level decomposition geometry.** Each block is composed of 10--50 individual steel plates characterized by dimensions (length, width, thickness in mm), plate type (flat, curved, stiffened, bracket, bulkhead, shell), number of stiffeners, curvature radius, and material grade. This data originates from 3D CAD/CAM design software (e.g., AVEVA Marine, NAPA) and is exported via our partner Steven's decomposition scripts as structured JSON. These geometric features are critical inputs for predicting per-stage processing times---a curved plate with stiffeners takes significantly longer to cut and weld than a flat plate.
 
 **Ship schedule and constraint data.** Delivery deadlines, dock assignments, and the mapping between blocks and ships. Sourced from project management and contract databases.
 
@@ -62,7 +62,7 @@ Given a block's plate-level characteristics, we predict the processing time (in 
 
 $$t_{stage} = \beta_0 + \beta_1 \cdot n_{plates} + \beta_2 \cdot n_{curved} + \beta_3 \cdot n_{stiffened} + \beta_4 \cdot A_{total} + \beta_5 \cdot L_{weld}$$
 
-where the features are plate count, curved plate count, stiffened plate count, total plate area (m^2), and total weld length (m). Coefficients are fitted per stage (steel cutting, panel assembly, block assembly, etc.) using least-squares optimization with non-negativity constraints. This replaces the current practice of using historical averages or lognormal distributions, giving geometry-informed estimates. Steve's plate decomposition data from CAD models provides the ground-truth features for fitting these models. We validate with R^2, RMSE, and MAE metrics using cross-validation across blocks.
+where the features are plate count, curved plate count, stiffened plate count, total plate area (m^2), and total weld length (m). Coefficients are fitted per stage (steel cutting, panel assembly, block assembly, etc.) using least-squares optimization with non-negativity constraints. This replaces the current practice of using historical averages or lognormal distributions, giving geometry-informed estimates. Steven's plate decomposition data from CAD models provides the ground-truth features for fitting these models. We validate with R^2, RMSE, and MAE metrics using cross-validation across blocks.
 
 **2. Artificial Neural Networks: Scheduling Policy and Value Estimation**
 
@@ -84,7 +84,7 @@ Concretely, GNNs perform *graph convolutions* that are the relational analog of 
 - **Message-passing layers:** Two layers of multi-head graph attention convolution (4 attention heads per layer) with residual connections and layer normalization, operating over 8 edge types (e.g., "block needs_transport SPMT", "block precedes block")
 - **Global pooling:** Mean pooling per node type, concatenated into a fixed-size state embedding (512 dimensions) that feeds the actor-critic ANNs described above
 
-The 4 plate-derived features added by Steve's decomposition---normalized plate count, normalized plate area, percent curved plates, and percent stiffened plates---give the GNN richer block representations that capture manufacturing complexity beyond simple weight and size.
+The 4 plate-derived features added by Steven's decomposition---normalized plate count, normalized plate area, percent curved plates, and percent stiffened plates---give the GNN richer block representations that capture manufacturing complexity beyond simple weight and size.
 
 ### Baseline Comparisons
 
