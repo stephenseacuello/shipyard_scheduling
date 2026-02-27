@@ -325,6 +325,92 @@ class GAScheduler:
 
         return self.best_solution
 
+    def reset(self) -> None:
+        """Reset scheduler state between episodes."""
+        self._solved = False
+        self._block_priority: Dict[int, int] = {}
+
+    def decide(self, env: "ShipyardEnv") -> Dict[str, Any]:
+        """Step-level dispatch using evolved chromosome priority.
+
+        On first call, evolves the population to find a good block ordering.
+        Then dispatches using the chromosome's block priority:
+        - Crane erection requests: pick earliest in chromosome order
+        - Transport requests: pick earliest in chromosome order
+        - Otherwise hold
+        """
+        # Solve once on first call (or if no solution yet)
+        if not getattr(self, '_solved', False):
+            if not self.population:
+                self.initialize_population()
+            # Quick evolution (fewer gens for online use)
+            try:
+                env_copy = deepcopy(env)
+                for gen in range(min(self.config.generations, 30)):
+                    self.evolve_generation(env_copy)
+            except Exception:
+                pass
+            # Build priority map from best chromosome
+            self._block_priority = {}
+            if self.best_solution is not None:
+                for priority, block_idx in enumerate(self.best_solution.block_order):
+                    self._block_priority[int(block_idx)] = priority
+            self._solved = True
+
+        hold = {
+            "action_type": 3, "spmt_idx": 0, "request_idx": 0,
+            "crane_idx": 0, "lift_idx": 0, "erection_idx": 0,
+            "equipment_idx": 0,
+        }
+
+        # Priority 1: Erect blocks (critical path)
+        erection_reqs = getattr(env, "erection_requests", [])
+        if erection_reqs:
+            cranes = env.entities.get("goliath_cranes", env.entities.get("cranes", []))
+            for ci, crane in enumerate(cranes):
+                if crane.status.name == "IDLE":
+                    # Pick request with lowest chromosome priority (= scheduled earliest)
+                    best_idx = 0
+                    best_pri = float("inf")
+                    for ri, req in enumerate(erection_reqs):
+                        block_id = getattr(req, "block_idx", ri)
+                        pri = self._block_priority.get(block_id, ri)
+                        if pri < best_pri:
+                            best_pri = pri
+                            best_idx = ri
+                    return {
+                        "action_type": 1, "crane_idx": ci,
+                        "erection_idx": best_idx, "lift_idx": best_idx,
+                        "spmt_idx": 0, "request_idx": 0, "equipment_idx": 0,
+                    }
+
+        # Priority 2: Transport blocks
+        trans_reqs = getattr(env, "transport_requests", [])
+        if trans_reqs:
+            spmts = env.entities.get("spmts", [])
+            for si, spmt in enumerate(spmts):
+                if spmt.status.name == "IDLE":
+                    best_idx = 0
+                    best_pri = float("inf")
+                    for ri, req in enumerate(trans_reqs):
+                        block_id = getattr(req, "block_idx", ri)
+                        pri = self._block_priority.get(block_id, ri)
+                        if pri < best_pri:
+                            best_pri = pri
+                            best_idx = ri
+                    spmt_assign = 0
+                    if self.best_solution is not None:
+                        block_idx_in_chrom = int(self.best_solution.block_order[0]) if len(self.best_solution.block_order) > 0 else 0
+                        spmt_assign = int(self.best_solution.spmt_assignments[block_idx_in_chrom]) % self.n_spmts
+                    return {
+                        "action_type": 0, "spmt_idx": si,
+                        "request_idx": best_idx,
+                        "crane_idx": 0, "lift_idx": 0,
+                        "erection_idx": 0, "equipment_idx": 0,
+                    }
+
+        return hold
+
     def decode_schedule(
         self,
         chromosome: Chromosome,

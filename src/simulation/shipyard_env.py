@@ -588,6 +588,9 @@ class HHIShipyardEnv(gym.Env):
             self.metrics["labor_cost"] = 0.0
             self.metrics["overtime_hours"] = 0.0
 
+        # Ship delivery tracking for reward calculation
+        self._ships_delivered_before = 0
+
         # Plate decomposition / sub-stage metrics
         if self.enable_plate_decomposition:
             self.metrics["plate_throughput"] = 0  # plates processed per step
@@ -1500,17 +1503,25 @@ class HHIShipyardEnv(gym.Env):
         if self.db_logging_enabled and int(self.sim_time) % 50 == 0:
             self.log_state_to_db()
 
+        # Ship delivery reward — awarded when a ship transitions to DELIVERED
+        ships_now = sum(1 for s in self.entities.get("ships", [])
+                        if s.status == ShipStatus.DELIVERED)
+        ships_before = getattr(self, '_ships_delivered_before', 0)
+        new_deliveries = ships_now - ships_before
+        if new_deliveries > 0:
+            reward += self.w_ship_delivery * new_deliveries
+        self._ships_delivered_before = ships_now
+
         # Check termination
         if self.continuous_production:
             # In continuous mode, never terminate early - only truncate at max_time
             terminated = False
         else:
-            # Standard mode: terminate when all blocks/ships complete
-            all_blocks_complete = self.metrics["blocks_erected"] >= self.n_blocks
-            ships_delivered = sum(1 for s in self.entities.get("ships", [])
-                                  if s.status == ShipStatus.DELIVERED)
-            all_ships_delivered = ships_delivered >= self.n_ships
-            terminated = all_blocks_complete or all_ships_delivered
+            # Standard mode: terminate when all ships are delivered.
+            # Do NOT terminate on blocks_erected alone — ships still need
+            # quay outfitting (~200h) and sea trials (~168h) after erection.
+            all_ships_delivered = ships_now >= self.n_ships
+            terminated = all_ships_delivered
 
         truncated = self.sim_time >= self.max_time
 

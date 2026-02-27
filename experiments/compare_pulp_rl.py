@@ -470,14 +470,10 @@ def main() -> None:
                 env = HHIShipyardEnv(cfg)
 
                 try:
-                    if agent_name == "GA":
-                        # GA uses its own evaluation loop
-                        episode_metrics = run_ga_evaluation(cfg, scheduler, seed)
-                    else:
-                        # Reset stateful schedulers
-                        if hasattr(scheduler, "reset"):
-                            scheduler.reset()
-                        episode_metrics = run_episode(env, scheduler, seed, args.max_steps)
+                    # Reset stateful schedulers
+                    if hasattr(scheduler, "reset"):
+                        scheduler.reset()
+                    episode_metrics = run_episode(env, scheduler, seed, args.max_steps)
                 except Exception as exc:
                     print(f"    seed={seed} FAILED: {exc}")
                     episode_metrics = {
