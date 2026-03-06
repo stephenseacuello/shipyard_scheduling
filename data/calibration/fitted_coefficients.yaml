@@ -1,0 +1,50 @@
+plate_time_coefficients:
+  BLOCK_ASSEMBLY:
+    base_hours: 9.2203658191667
+    per_plate: 0.24924712424066675
+    per_curved: 1.223920527917135e-09
+    per_stiffened: 9.870319035665673e-14
+    per_area_m2: 0.004983717270191394
+    per_weld_m: 0.04919398834397609
+  BLOCK_OUTFITTING:
+    base_hours: 9.464467250394934
+    per_plate: 0.09908216220518594
+    per_curved: 0.009519184022529888
+    per_stiffened: 1.8039640888335337e-20
+    per_area_m2: 3.087367115903524e-20
+    per_weld_m: 6.361320621430037e-21
+  PAINTING:
+    base_hours: 3.5727601164129497
+    per_plate: 4.476256357452429e-19
+    per_curved: 6.525774398893168e-22
+    per_stiffened: 7.554729604030934e-13
+    per_area_m2: 0.009854792157672492
+    per_weld_m: 1.2872975881191113e-05
+  PANEL_ASSEMBLY:
+    base_hours: 2.9781245016509033
+    per_plate: 0.048380546746278376
+    per_curved: 3.571408975029024e-35
+    per_stiffened: 0.40397635481031097
+    per_area_m2: 0.0036444378840429495
+    per_weld_m: 2.7117543655362595e-06
+  PART_FABRICATION:
+    base_hours: 2.3492649774070924
+    per_plate: 0.317750240731963
+    per_curved: 0.8284851348007807
+    per_stiffened: 2.740798174639221e-12
+    per_area_m2: 0.0030072168885106093
+    per_weld_m: 3.358117026678334e-05
+  PRE_ERECTION:
+    base_hours: 5.57747356037323
+    per_plate: 0.031229903692833096
+    per_curved: 0.02926559632398117
+    per_stiffened: 0.019590332606247162
+    per_area_m2: 1.755511022410393e-13
+    per_weld_m: 1.7999936510952644e-05
+  STEEL_CUTTING:
+    base_hours: 1.5958908128437639
+    per_plate: 0.29420135370141753
+    per_curved: 0.5963036196157818
+    per_stiffened: 2.581269449019216e-20
+    per_area_m2: 9.781294159658522e-23
+    per_weld_m: 5.387236256402572e-21

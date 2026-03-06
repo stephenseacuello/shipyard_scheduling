@@ -24,7 +24,8 @@ import yaml
 from typing import Dict, List, Any, Tuple, Optional
 from datetime import datetime
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, PROJECT_ROOT)
 
 from src.simulation.shipyard_env import HHIShipyardEnv
 from src.agent.gnn_encoder import HeterogeneousGNNEncoder
@@ -38,6 +39,43 @@ try:
 except ImportError:
     WANDB_AVAILABLE = False
     print("Warning: wandb not available, metrics will only be printed")
+
+
+class RunningMeanStd:
+    """Online normalization using Welford's algorithm.
+
+    Tracks running mean and variance to normalize observations,
+    preventing distribution shift across curriculum stages.
+    """
+
+    def __init__(self, shape: Tuple[int, ...] = (), epsilon: float = 1e-8):
+        self.mean = np.zeros(shape, dtype=np.float64)
+        self.var = np.ones(shape, dtype=np.float64)
+        self.count = epsilon  # avoid division by zero
+
+    def update(self, x: np.ndarray) -> None:
+        """Update running stats with a batch of observations."""
+        batch_mean = np.mean(x, axis=0)
+        batch_var = np.var(x, axis=0)
+        batch_count = x.shape[0]
+        self._update_from_moments(batch_mean, batch_var, batch_count)
+
+    def _update_from_moments(self, batch_mean, batch_var, batch_count):
+        delta = batch_mean - self.mean
+        total_count = self.count + batch_count
+        new_mean = self.mean + delta * batch_count / total_count
+        m_a = self.var * self.count
+        m_b = batch_var * batch_count
+        m2 = m_a + m_b + np.square(delta) * self.count * batch_count / total_count
+        self.mean = new_mean
+        self.var = m2 / total_count
+        self.count = total_count
+
+    def normalize(self, x: torch.Tensor) -> torch.Tensor:
+        """Normalize a tensor using running stats."""
+        mean_t = torch.tensor(self.mean, dtype=x.dtype, device=x.device)
+        std_t = torch.tensor(np.sqrt(self.var + 1e-8), dtype=x.dtype, device=x.device)
+        return (x - mean_t) / std_t
 
 
 def load_config(path: str) -> Dict[str, Any]:
@@ -71,11 +109,14 @@ class CurriculumDAggerTrainer:
             list(encoder.parameters()) + list(policy.parameters()),
             lr=lr, weight_decay=1e-5
         )
-        
+
         # Aggregated dataset
         self.states: List[torch.Tensor] = []
         self.expert_actions: List[Dict[str, int]] = []
-        
+
+        # Observation normalizer (initialized lazily on first embedding)
+        self.obs_normalizer: Optional[RunningMeanStd] = None
+
         # Action key mapping
         self.action_keys = {
             "action_type": "action_type",
@@ -90,7 +131,40 @@ class CurriculumDAggerTrainer:
         """Clear the aggregated dataset."""
         self.states = []
         self.expert_actions = []
-        
+
+    def trim_dataset(self, keep_fraction: float = 0.5):
+        """Retain most recent fraction of dataset (for stage transitions).
+
+        Keeps the newest samples to preserve knowledge from harder stages
+        while freeing memory.
+        """
+        n = len(self.states)
+        if n == 0:
+            return
+        keep = max(1, int(n * keep_fraction))
+        self.states = self.states[-keep:]
+        self.expert_actions = self.expert_actions[-keep:]
+
+    def _init_normalizer(self, dim: int):
+        """Lazily initialize the observation normalizer."""
+        if self.obs_normalizer is None:
+            self.obs_normalizer = RunningMeanStd(shape=(dim,))
+
+    def _update_and_normalize(self, state_emb: torch.Tensor) -> torch.Tensor:
+        """Update normalizer stats and return normalized embedding."""
+        arr = state_emb.detach().cpu().numpy()
+        if arr.ndim == 1:
+            arr = arr.reshape(1, -1)
+        self._init_normalizer(arr.shape[-1])
+        self.obs_normalizer.update(arr)
+        return self.obs_normalizer.normalize(state_emb)
+
+    def _normalize(self, state_emb: torch.Tensor) -> torch.Tensor:
+        """Normalize without updating stats (for evaluation)."""
+        if self.obs_normalizer is None:
+            return state_emb
+        return self.obs_normalizer.normalize(state_emb)
+
     def collect_expert_demos(
         self,
         env: HHIShipyardEnv,
@@ -101,36 +175,37 @@ class CurriculumDAggerTrainer:
         """Collect expert demonstrations."""
         total_reward = 0.0
         total_throughput = 0.0
-        
+
         for ep in range(n_episodes):
             obs, info = env.reset()
             ep_reward = 0.0
-            
+
             for step in range(max_steps):
                 # Encode state
                 graph_data = env.get_graph_data().to(self.device)
                 with torch.no_grad():
                     state_emb = self.encoder(graph_data)
-                
+                    state_emb = self._update_and_normalize(state_emb)
+
                 # Get expert action
                 expert_action = expert.decide(env)
-                
-                # Store
+
+                # Store normalized embedding
                 self.states.append(state_emb.cpu())
                 self.expert_actions.append(expert_action)
-                
+
                 # Step with expert action
                 obs, reward, terminated, truncated, info = env.step(expert_action)
                 ep_reward += reward
-                
+
                 if terminated or truncated:
                     break
-            
+
             total_reward += ep_reward
             if env.sim_time > 0:
                 completed = env.metrics.get("blocks_erected", env.metrics.get("blocks_completed", 0))
                 total_throughput += completed / env.sim_time
-                
+
         return {
             "avg_reward": total_reward / n_episodes,
             "avg_throughput": total_throughput / n_episodes,
@@ -147,33 +222,34 @@ class CurriculumDAggerTrainer:
     ) -> int:
         """Collect DAgger data."""
         new_samples = 0
-        
+
         for ep in range(n_episodes):
             obs, info = env.reset()
-            
+
             for step in range(max_steps):
                 graph_data = env.get_graph_data().to(self.device)
                 with torch.no_grad():
                     state_emb = self.encoder(graph_data)
-                
+                    state_emb = self._update_and_normalize(state_emb)
+
                 expert_action = expert.decide(env)
-                
+
                 self.states.append(state_emb.cpu())
                 self.expert_actions.append(expert_action)
                 new_samples += 1
-                
+
                 if random.random() < beta:
                     action = expert_action
                 else:
                     with torch.no_grad():
                         policy_action, _, _ = self.policy.get_action(state_emb)
                     action = {k: int(v.item()) for k, v in policy_action.items()}
-                
+
                 obs, reward, terminated, truncated, info = env.step(action)
-                
+
                 if terminated or truncated:
                     break
-                    
+
         return new_samples
     
     def train_epoch(self, batch_size: int = 64) -> float:
@@ -237,31 +313,32 @@ class CurriculumDAggerTrainer:
         total_throughput = 0.0
         total_reward = 0.0
         total_completed = 0
-        
+
         for ep in range(n_episodes):
             obs, info = env.reset()
             ep_reward = 0.0
-            
+
             for step in range(max_steps):
                 graph_data = env.get_graph_data().to(self.device)
                 with torch.no_grad():
                     state_emb = self.encoder(graph_data)
+                    state_emb = self._normalize(state_emb)
                     action, _, _ = self.policy.get_action(state_emb, deterministic=True)
-                
+
                 action_cpu = {k: int(v.item()) for k, v in action.items()}
                 obs, reward, terminated, truncated, info = env.step(action_cpu)
                 ep_reward += reward
-                
+
                 if terminated or truncated:
                     break
-            
+
             total_reward += ep_reward
             completed = env.metrics.get("blocks_erected", env.metrics.get("blocks_completed", 0))
             total_completed += completed
-            
+
             if env.sim_time > 0:
                 total_throughput += completed / env.sim_time
-        
+
         return {
             "avg_reward": total_reward / n_episodes,
             "avg_throughput": total_throughput / n_episodes,
@@ -355,62 +432,75 @@ def run_curriculum_training(
     # Train through curriculum stages
     for stage_idx, (config_path, stage_name) in enumerate(zip(config_paths, stage_names)):
         stage_start = time.time()
-        
+
         print("\n" + "-" * 70)
         print(f"STAGE {stage_idx + 1}/{len(config_paths)}: {stage_name}")
         print("-" * 70)
-        
+
         cfg = load_config(config_path)
         env = HHIShipyardEnv(cfg)
-        
+
         n_blocks = getattr(env, 'n_blocks', cfg.get('n_blocks', 'unknown'))
         n_spmts = getattr(env, 'n_spmts', cfg.get('n_spmts', 'unknown'))
         n_cranes = getattr(env, 'n_goliath_cranes', getattr(env, 'n_cranes', cfg.get('n_cranes', 'unknown')))
-        
+
         print(f"Environment: {n_blocks} blocks, {n_spmts} SPMTs, {n_cranes} cranes")
-        
+
+        # Per-stage max_steps: scale with instance size
+        if isinstance(n_blocks, int):
+            stage_max_steps = max(max_steps, n_blocks * 10)
+        else:
+            stage_max_steps = max_steps
+        print(f"  max_steps for this stage: {stage_max_steps}")
+
+        # Trim dataset at stage boundaries (keep 50% from prior stage)
+        if stage_idx > 0 and len(trainer.states) > 0:
+            pre_trim = len(trainer.states)
+            trainer.trim_dataset(keep_fraction=0.5)
+            print(f"  Dataset trimmed: {pre_trim} -> {len(trainer.states)} samples")
+
         # Collect expert demos
         print(f"\nCollecting {init_episodes} expert demonstrations...")
-        demo_metrics = trainer.collect_expert_demos(env, expert, init_episodes, max_steps=max_steps)
+        demo_metrics = trainer.collect_expert_demos(env, expert, init_episodes, max_steps=stage_max_steps)
         print(f"  Samples collected: {demo_metrics['n_samples']}")
         print(f"  Expert throughput: {demo_metrics['avg_throughput']:.6f}")
-        
+
         # Initial BC training
         print(f"\nInitial BC training ({train_epochs} epochs)...")
         for epoch in range(train_epochs):
             loss = trainer.train_epoch()
         print(f"  Final loss: {loss:.4f}")
-        
+
         # Evaluate after BC
-        metrics = trainer.evaluate(env, n_episodes=2, max_steps=max_steps)
+        metrics = trainer.evaluate(env, n_episodes=2, max_steps=stage_max_steps)
         print(f"After BC: Throughput = {metrics['avg_throughput']:.6f}")
-        
+
         if use_wandb and WANDB_AVAILABLE:
             wandb.log({
                 f"stage_{stage_idx}/bc_throughput": metrics['avg_throughput'],
                 f"stage_{stage_idx}/bc_reward": metrics['avg_reward'],
                 "stage": stage_idx,
             })
-        
-        # DAgger iterations
+
+        # DAgger iterations — per-stage beta schedule (reset each stage)
         stage_metrics = []
+        stage_beta_start = 0.8 if stage_idx > 0 else beta_start
+        stage_beta_end = 0.2
         for iteration in range(iterations_per_stage):
-            total_iters = iterations_per_stage * len(config_paths)
-            global_iter = stage_idx * iterations_per_stage + iteration
-            beta = beta_start - (beta_start - beta_end) * global_iter / max(total_iters - 1, 1)
-            
+            beta = stage_beta_start - (stage_beta_start - stage_beta_end) * iteration / max(iterations_per_stage - 1, 1)
+
             print(f"\n  DAgger Iteration {iteration + 1}/{iterations_per_stage} (beta={beta:.2f})")
-            
-            new_samples = trainer.collect_dagger_data(env, expert, dagger_episodes, beta=beta, max_steps=max_steps)
+
+            new_samples = trainer.collect_dagger_data(env, expert, dagger_episodes, beta=beta, max_steps=stage_max_steps)
             print(f"    New samples: {new_samples}, Total: {len(trainer.states)}")
-            
+
             for epoch in range(train_epochs):
                 loss = trainer.train_epoch()
             print(f"    Final loss: {loss:.4f}")
-            
-            metrics = trainer.evaluate(env, n_episodes=2, max_steps=max_steps)
+
+            metrics = trainer.evaluate(env, n_episodes=2, max_steps=stage_max_steps)
             print(f"    Throughput: {metrics['avg_throughput']:.6f}")
-            
+
             stage_metrics.append({
                 "iteration": iteration + 1,
                 "beta": beta,
@@ -418,7 +508,8 @@ def run_curriculum_training(
                 "throughput": metrics['avg_throughput'],
                 "reward": metrics['avg_reward'],
             })
-            
+
+            global_iter = stage_idx * iterations_per_stage + iteration
             if use_wandb and WANDB_AVAILABLE:
                 wandb.log({
                     f"stage_{stage_idx}/iteration": iteration + 1,
@@ -453,7 +544,7 @@ def run_curriculum_training(
     print("FINAL EVALUATION ON HHI ULSAN (full scale)")
     print("=" * 70)
     
-    hhi_cfg = load_config("/Users/stepheneacuello/Projects/shipyard_scheduling/config/hhi_ulsan.yaml")
+    hhi_cfg = load_config(os.path.join(PROJECT_ROOT, "config", "hhi_ulsan.yaml"))
     hhi_env = HHIShipyardEnv(hhi_cfg)
     
     print(f"HHI Environment: {hhi_env.n_blocks} blocks, {hhi_env.n_spmts} SPMTs")
@@ -475,7 +566,7 @@ def run_curriculum_training(
         })
     
     # Save checkpoint
-    save_dir = "/Users/stepheneacuello/Projects/shipyard_scheduling/data/checkpoints/curriculum/"
+    save_dir = os.path.join(PROJECT_ROOT, "data", "checkpoints", "curriculum")
     os.makedirs(save_dir, exist_ok=True)
     torch.save({
         "encoder": encoder.state_dict(),
@@ -601,11 +692,11 @@ def run_direct_training(
 def main():
     parser = argparse.ArgumentParser(description="Curriculum DAgger for Shipyard Scheduling")
     parser.add_argument("--device", type=str, default="cpu")
-    parser.add_argument("--iterations", type=int, default=5, help="DAgger iterations per stage")
-    parser.add_argument("--init-episodes", type=int, default=5)
-    parser.add_argument("--dagger-episodes", type=int, default=3)
-    parser.add_argument("--train-epochs", type=int, default=10)
-    parser.add_argument("--max-steps", type=int, default=300)
+    parser.add_argument("--iterations", type=int, default=10, help="DAgger iterations per stage")
+    parser.add_argument("--init-episodes", type=int, default=15)
+    parser.add_argument("--dagger-episodes", type=int, default=8)
+    parser.add_argument("--train-epochs", type=int, default=20)
+    parser.add_argument("--max-steps", type=int, default=500)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--no-wandb", action="store_true")
     parser.add_argument("--skip-direct", action="store_true")
@@ -618,7 +709,7 @@ def main():
     use_wandb = not args.no_wandb and WANDB_AVAILABLE
     
     # Define curriculum stages
-    config_dir = "/Users/stepheneacuello/Projects/shipyard_scheduling/config/"
+    config_dir = os.path.join(PROJECT_ROOT, "config")
     curriculum_configs = [
         os.path.join(config_dir, "tiny_instance.yaml"),
         os.path.join(config_dir, "small_instance.yaml"),

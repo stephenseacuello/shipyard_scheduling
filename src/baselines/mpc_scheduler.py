@@ -29,9 +29,9 @@ except ImportError:
 class MPCConfig:
     """Configuration for MPC scheduler."""
     prediction_horizon: int = 50  # Steps to look ahead
-    control_horizon: int = 10     # Steps to optimize for execution
-    replanning_frequency: int = 5  # Steps between replanning
-    solver_time_limit: float = 5.0  # Seconds per solve
+    control_horizon: int = 5      # Steps to optimize for execution
+    replanning_frequency: int = 3  # Steps between replanning
+    solver_time_limit: float = 2.0  # Seconds per solve
     objective_weights: Dict[str, float] = None
 
     def __post_init__(self):
@@ -150,40 +150,59 @@ class RollingHorizonMPC:
         if n_blocks == 0 or n_spmts == 0 or n_reqs == 0:
             return [self._make_hold_action()] * horizon
 
+        # Prioritize most urgent requests to keep solver tractable
+        k_max = min(20, n_reqs)
+        if n_reqs > k_max:
+            urgencies = []
+            for req in trans_reqs:
+                block_id = req.get("block_id", "") if isinstance(req, dict) else getattr(req, "block_id", "")
+                block = env._get_block(block_id) if hasattr(env, '_get_block') else None
+                due = getattr(block, 'due_date', float('inf')) if block else float('inf')
+                urgencies.append(due - getattr(env, 'sim_time', 0))
+            top_k_indices = list(np.argsort(urgencies)[:k_max])
+            plan_reqs = [trans_reqs[i] for i in top_k_indices]
+        else:
+            plan_reqs = list(trans_reqs)
+            top_k_indices = list(range(n_reqs))
+        n_plan_reqs = len(plan_reqs)
+
+        # Adaptive horizon: cap decision variables at ~5000
+        effective_horizon = min(horizon, max(5, 5000 // max(n_plan_reqs * n_spmts, 1)))
+
         # Decision variables
         # x[r, s, t] = 1 if request r is dispatched to SPMT s at time t
-        n_plan_reqs = min(n_reqs, horizon)
         x = {}
         for r in range(n_plan_reqs):
             for s in range(n_spmts):
-                for t in range(horizon):
+                for t in range(effective_horizon):
                     x[r, s, t] = model.NewBoolVar(f"x_{r}_{s}_{t}")
 
         # Constraints: each request dispatched at most once
         for r in range(n_plan_reqs):
-            model.Add(sum(x[r, s, t] for s in range(n_spmts) for t in range(horizon)) <= 1)
+            model.Add(sum(x[r, s, t] for s in range(n_spmts) for t in range(effective_horizon)) <= 1)
 
         # SPMT handles one request per timestep
         for s in range(n_spmts):
-            for t in range(horizon):
+            for t in range(effective_horizon):
                 model.Add(sum(x[r, s, t] for r in range(n_plan_reqs)) <= 1)
 
         # Objective: dispatch early, prefer earliest-due requests
         obj_terms = []
         for r in range(n_plan_reqs):
-            req = trans_reqs[r]
+            req = plan_reqs[r]
             due_weight = 1.0
-            if hasattr(req, "due_date"):
-                # Lower due_date = higher urgency = lower weight multiplier
-                due_weight = max(0.1, req.due_date - getattr(env, "sim_time", 0)) / 1000.0
+            block_id = req.get("block_id", "") if isinstance(req, dict) else getattr(req, "block_id", "")
+            block = env._get_block(block_id) if hasattr(env, '_get_block') else None
+            if block and hasattr(block, "due_date"):
+                due_weight = max(0.1, block.due_date - getattr(env, "sim_time", 0)) / 1000.0
             for s in range(n_spmts):
-                for t in range(horizon):
+                for t in range(effective_horizon):
                     obj_terms.append(int((t + 1) * due_weight * 10) * x[r, s, t])
 
         # Bonus for actually dispatching (negative cost = encouragement)
         for r in range(n_plan_reqs):
             for s in range(n_spmts):
-                for t in range(horizon):
+                for t in range(effective_horizon):
                     obj_terms.append(-100 * x[r, s, t])
 
         if obj_terms:
@@ -194,19 +213,21 @@ class RollingHorizonMPC:
         solver.parameters.max_time_in_seconds = self.config.solver_time_limit
         status = solver.Solve(model)
 
-        # Extract solution
+        # Extract solution — map plan_reqs indices back to original trans_reqs indices
         schedule = []
         if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
-            for t in range(horizon):
+            for t in range(effective_horizon):
                 action = self._make_hold_action()
 
                 for r in range(n_plan_reqs):
                     for s in range(n_spmts):
                         if solver.Value(x[r, s, t]) == 1:
+                            # Map back to original request index
+                            orig_req_idx = top_k_indices[r] if r < len(top_k_indices) else r
                             action = {
                                 "action_type": 0,
                                 "spmt_idx": s,
-                                "request_idx": r % max(1, n_reqs),
+                                "request_idx": orig_req_idx % max(1, n_reqs),
                                 "crane_idx": 0, "lift_idx": 0,
                                 "erection_idx": 0, "equipment_idx": 0,
                             }

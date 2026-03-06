@@ -207,7 +207,7 @@ class CoefficientFitter:
             try:
                 popt, _ = curve_fit(
                     model, X, y,
-                    p0=[5.0, 0.2, 0.3, 0.01, 0.05],
+                    p0=[5.0, 0.2, 0.3, 0.3, 0.01, 0.05],
                     bounds=(0, np.inf),  # All coefficients >= 0
                     maxfev=5000,
                 )
@@ -220,14 +220,28 @@ class CoefficientFitter:
                     "per_weld_m": float(popt[5]),
                 }
             except Exception:
-                # Fallback: simple per-plate linear fit
-                n_plates = np.array([r.n_plates for r in records], dtype=float)
-                if np.std(n_plates) > 0:
-                    slope, intercept = np.polyfit(n_plates, y, 1)
+                # Fallback 1: Ridge regression (handles multicollinearity)
+                try:
+                    from sklearn.linear_model import Ridge
+                    ridge = Ridge(alpha=1.0)
+                    ridge.fit(X, y)
                     fitted[stage] = {
-                        "base_hours": max(0.0, float(intercept)),
-                        "per_plate": max(0.0, float(slope)),
+                        "base_hours": max(0.0, float(ridge.intercept_)),
+                        "per_plate": max(0.0, float(ridge.coef_[0])),
+                        "per_curved": max(0.0, float(ridge.coef_[1])),
+                        "per_stiffened": max(0.0, float(ridge.coef_[2])),
+                        "per_area_m2": max(0.0, float(ridge.coef_[3])),
+                        "per_weld_m": max(0.0, float(ridge.coef_[4])),
                     }
+                except Exception:
+                    # Fallback 2: simple per-plate linear fit
+                    n_plates = np.array([r.n_plates for r in records], dtype=float)
+                    if np.std(n_plates) > 0:
+                        slope, intercept = np.polyfit(n_plates, y, 1)
+                        fitted[stage] = {
+                            "base_hours": max(0.0, float(intercept)),
+                            "per_plate": max(0.0, float(slope)),
+                        }
 
         return fitted
 

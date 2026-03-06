@@ -482,9 +482,9 @@ python -m src.mes.app
 
 ---
 
-## Curriculum Learning Results (Validated 2026-02-14)
+## Curriculum Learning Results (Updated 2026-03-04)
 
-Attempted curriculum learning from Tiny → Small → HHI Ulsan scale:
+### Original Attempt (2026-02-14) — No Normalization
 
 | Stage | Environment | Throughput | Transfer Success |
 |-------|-------------|------------|------------------|
@@ -492,12 +492,59 @@ Attempted curriculum learning from Tiny → Small → HHI Ulsan scale:
 | 2 | Small (50 blocks) | 0.000 | ❌ |
 | 3 | HHI Ulsan (200 blocks) | 0.000 | ❌ |
 
-**Result**: Curriculum learning **did not transfer** successfully to HHI scale. Final reward: -99.7
+**Result**: Complete failure. Final reward: -99.7
 
-**Analysis**: The curriculum approach struggles because:
-- Environment dynamics change significantly between scales
-- Policy learned on tiny instances doesn't generalize to larger action spaces
-- DAgger with direct HHI training is more effective
+### Improved Curriculum (2026-03-04) — With Obs Normalization + Per-Stage Beta Reset
+
+Training time: 19.8 hours (70,426 seconds) on Apple M1 Pro CPU.
+
+Improvements applied:
+- `RunningMeanStd` observation normalization (Welford's algorithm)
+- Per-stage beta reset: each stage anneals 0.8 → 0.2 (not global)
+- Dataset retention: keep 50% from previous stage
+- Per-stage max_steps scaling: n_blocks × 10
+- Increased iterations (10), episodes (15 init / 8 DAgger), epochs (20)
+
+| Stage | Environment | Expert Throughput | DAgger Throughput | % of Expert | Loss Trend | Time |
+|-------|-------------|------------------|------------------|-------------|------------|------|
+| 1 | Tiny (10 blocks) | 0.0202 | 0.0204 | **100.6%** | 0.04 → 0.006 ↓ | 1.7h |
+| 2 | Small (50 blocks) | 0.1000 | 0.1000 | **100.0%** | 0.097 → 0.023 ↓ | 3.3h |
+| 3 | Medium HHI (200 blocks) | 0.1123 | 0.0385 | **34.3%** | 1.79 → 2.77 ↑ | 14.6h |
+
+### Medium Stage Iteration-by-Iteration Progress
+
+| Iteration | Beta | Loss | Throughput | Blocks (est.) |
+|-----------|------|------|------------|---------------|
+| BC init | — | 1.789 | 0.0000 | 0 |
+| 1 | 0.80 | 2.086 | 0.0000 | 0 |
+| 2 | 0.73 | 2.206 | 0.0000 | 0 |
+| 3 | 0.67 | 2.283 | 0.0000 | 0 |
+| 4 | 0.60 | 2.341 | 0.0000 | 0 |
+| 5 | 0.53 | 2.423 | 0.0003 | ~0.3 |
+| 6 | 0.47 | 2.496 | 0.0100 | ~10 |
+| 7 | 0.40 | 2.568 | 0.0140 | ~14 |
+| 8 | 0.33 | 2.644 | 0.0393 | ~39 |
+| 9 | 0.27 | 2.706 | 0.0405 | ~41 |
+| 10 | 0.20 | 2.772 | 0.0385 | ~39 |
+
+### Key Findings
+
+1. **Curriculum works for small-to-small transfer**: 100% expert match on tiny and small stages
+2. **Partial medium success**: 0% → 34.3% of expert (from ~0 to ~39 blocks out of 200)
+3. **Loss diverges at scale**: 1.79 → 2.77 despite throughput increasing, suggesting the model learns some useful behaviors but the 256-dim policy network cannot fully represent the 200-block action space
+4. **Learning emerges late**: First positive throughput at iteration 5 (beta=0.53), rapid improvement iterations 6-8
+5. **Plateau at ~0.04 throughput**: Iterations 8-10 show saturation, suggesting architectural capacity limit
+6. **HHI Ulsan (1600 blocks) still fails**: Zero throughput on full-scale — medium curriculum is necessary but not sufficient
+
+### Comparison: DAgger Scaling Before vs After Curriculum
+
+| Config | Before (Direct) | After (Curriculum) | Improvement |
+|--------|----------------|-------------------|-------------|
+| Small (50 blocks) | 99.7% of expert | 100.0% of expert | +0.3% |
+| Medium (200 blocks) | **0.0%** of expert | **34.3%** of expert | **+34.3pp** |
+| HHI Ulsan (1600 blocks) | 0.0% | 0.0% | No change |
+
+**Conclusion**: Curriculum learning with observation normalization partially closes the scalability gap, improving medium-scale performance from 0% to 34.3% of expert. Further improvements likely require: (1) larger policy network, (2) attention-based action heads for variable-size block sets, (3) hierarchical action decomposition.
 
 ---
 
@@ -735,11 +782,117 @@ python src/utils/calibrate_plate_coefficients.py --data data/partner_export.json
 
 ---
 
+## Calibration Coefficient Fitting (Validated 2026-03-03)
+
+### p0 Bug Fix and Ridge Regression Fallback
+
+Fixed a critical bug in `src/simulation/calibration.py` where `curve_fit` was called with 5 initial parameter values for a 6-parameter model, causing silent fallback to simple linear regression.
+
+| Stage | R² (Before Fix) | R² (After Fix) | RMSE (hours) | n_samples |
+|-------|----------------|---------------|--------------|-----------|
+| BLOCK_ASSEMBLY | **-0.03** | **0.985** | 12.9 | 95 |
+| STEEL_CUTTING | 0.40 | **0.937** | 0.65 | 200 |
+| PART_FABRICATION | 0.39 | **0.964** | 0.67 | 100 |
+| PANEL_ASSEMBLY | 0.81 | **0.945** | 0.80 | 100 |
+| PAINTING | 0.88 | **0.916** | 0.59 | 95 |
+| BLOCK_OUTFITTING | 0.58 | 0.510 | 0.67 | 95 |
+| PRE_ERECTION | 0.42 | 0.369 | 0.42 | 95 |
+
+**Key Finding:** The p0 fix dramatically improved block assembly calibration from R²=-0.03 to R²=0.985. Five of seven stages now have R²>0.90, enabling accurate plate-count-based processing time estimation.
+
+### Fitted Coefficients (6-Feature Model)
+
+```
+T_i = base + c_plate * n_plates + c_curved * n_curved + c_stiffened * n_stiffened + c_area * area_m2 + c_weld * weld_m
+```
+
+| Stage | base_hours | per_plate | per_curved | per_stiffened | per_area_m2 | per_weld_m |
+|-------|-----------|-----------|-----------|--------------|------------|-----------|
+| BLOCK_ASSEMBLY | 9.22 | 0.249 | 0.000 | 0.000 | 0.005 | 0.049 |
+| STEEL_CUTTING | 1.60 | 0.294 | 0.596 | 0.000 | 0.000 | 0.000 |
+| PART_FABRICATION | 2.35 | 0.318 | 0.829 | 0.000 | 0.003 | 0.000 |
+| PANEL_ASSEMBLY | 2.98 | 0.048 | 0.000 | 0.404 | 0.004 | 0.000 |
+| PAINTING | 3.57 | 0.000 | 0.000 | 0.000 | 0.010 | 0.000 |
+
+---
+
+## MPC Baseline Improvement (Validated 2026-03-03)
+
+### Adaptive Horizon + Request Prioritization
+
+Fixed MPC decision variable explosion: original formulation created 200×24×50 = 240K binary variables on medium instances, causing solver timeouts.
+
+**Changes:**
+- Request prioritization: select top-k=20 most urgent requests (by due date)
+- Adaptive horizon: cap total decision variables at ~5,000
+- Reduced solver time limit: 5.0s → 2.0s
+- Increased replanning frequency: every 3 steps (was 5)
+
+### Small Instance Results (10 seeds, 2000 steps)
+
+| Agent | Blocks | Ships | Throughput | 95% CI |
+|-------|--------|-------|------------|--------|
+| **MPC** | **50.0** | **1.0** | **0.0543** | [0.0529, 0.0556] |
+| Expert | 50.0 | 1.0 | 0.0517 | [0.0502, 0.0532] |
+
+Mann-Whitney U: p=0.0154, Cohen's d=−1.30 (large effect, MPC significantly better)
+
+**Key Finding:** On small instances, the improved MPC slightly **outperforms** the Expert scheduler with statistically significant improvement (p<0.05).
+
+---
+
+## Cross-Config Statistical Comparison (Validated 2026-03-03)
+
+### Small Instance (50 blocks, 1 ship, 5 seeds, 1000 steps)
+
+| Agent | Blocks | Ships | Throughput | 95% CI | Wall Time |
+|-------|--------|-------|------------|--------|-----------|
+| **GA** | **50.0** | **1.0** | **0.0576** | [0.0564, 0.0588] | 103.8s |
+| MPC | 50.0 | 1.0 | 0.0551 | [0.0525, 0.0577] | 0.5s |
+| Expert | 50.0 | 1.0 | 0.0528 | [0.0507, 0.0548] | 0.7s |
+
+**Pairwise tests:** Expert vs GA: p=0.012, d=−3.57 (GA significantly better). Expert vs MPC: p=0.059 (borderline). GA vs MPC: p=0.095 (ns).
+
+### Medium HHI (200 blocks, 9 ships, 5 seeds, 1000 steps)
+
+| Agent | Blocks | Ships | Throughput | 95% CI | Wall Time |
+|-------|--------|-------|------------|--------|-----------|
+| **Expert** | **110.8** | **0** | **0.1108** | [0.1092, 0.1124] | 3.3s |
+| MPC | 23.8 | 0 | 0.0238 | [0.0222, 0.0254] | 1.8s |
+| GA | 12.0 | 0 | 0.0120 | [0.0055, 0.0185] | 1022.3s |
+
+**Pairwise tests:** All pairs significant (p<0.05). Expert vs MPC: d=66.7. Expert vs GA: d=25.9. MPC vs GA: d=3.1.
+
+### DAgger Scalability Gap (Updated with Curriculum Results)
+
+| Config | Blocks | Expert | DAgger (Direct) | DAgger (Curriculum) | Improvement |
+|--------|--------|--------|----------------|--------------------|----|
+| Small (50 blocks) | 50 | 0.0517 | 0.0516 (99.7%) | 0.1000 (100%) | +0.3pp |
+| Medium HHI (200 blocks) | 200 | 0.1123 | 0.0000 (0%) | **0.0385 (34.3%)** | **+34.3pp** |
+
+**Root Cause Analysis:**
+- Distribution shift: as beta decreases from 1.0 to 0.1, loss increases from 3.14 to 3.70
+- Compounding errors in the 200-block state space overwhelm the 256-dim policy network
+- Curriculum learning with obs normalization partially addresses this (0% → 34.3%)
+- Loss still diverges at medium scale (1.79 → 2.77), indicating architectural capacity limit
+
+### Key Scalability Findings
+
+1. **Small instance is too easy**: All agents (Expert, MPC, GA) achieve 100% blocks and 1 ship
+2. **Expert (EDD) dominates at scale**: 110.8 blocks vs MPC 23.8 vs GA 12.0 on medium_hhi
+3. **GA is impractical at scale**: 1000+ seconds per episode (vs 3.3s for Expert), only 10.8% throughput
+4. **MPC improved but insufficient**: Adaptive horizon fix enables solving (was timing out), but greedy EDD dispatch in `step()` does most of the work — the optimization provides marginal benefit on medium instances
+5. **DAgger needs curriculum**: 99.7% on small, 0% on medium — curriculum learning with obs normalization in progress
+
+---
+
 ## Notes
 
 - All results validated on 2026-02-14 and 2026-02-16 via Wandb tracking
 - Supply chain extension results validated on 2026-02-16
 - Plate decomposition and PuLP MIP results added 2026-02-23 (preliminary, pending partner data)
+- Calibration fix, MPC improvement, and scalability analysis validated 2026-03-03
+- Curriculum DAgger training completed 2026-03-04 (19.8h, 0% → 34.3% on medium)
 - Experiments run on Apple M1 Pro (CPU-only)
 - Random seeds used for statistical significance where noted
 - Confidence intervals are 95% based on Student's t-distribution

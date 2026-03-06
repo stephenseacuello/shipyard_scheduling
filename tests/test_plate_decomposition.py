@@ -485,8 +485,13 @@ class TestCalibration:
         fitter = CoefficientFitter()
         coefficients = fitter.fit(dataset)
         assert "STEEL_CUTTING" in coefficients
-        # Fitted per_plate should be close to 0.3
-        assert coefficients["STEEL_CUTTING"]["per_plate"] > 0.1
+        # With multicollinearity (area/weld correlated with n_plates),
+        # coefficient distributes across features; check effective contribution
+        c = coefficients["STEEL_CUTTING"]
+        effective_per_plate = (c.get("per_plate", 0)
+                               + c.get("per_area_m2", 0) * 30.0
+                               + c.get("per_weld_m", 0) * 6.0)
+        assert effective_per_plate > 0.1
 
         # Validate
         metrics = fitter.validate(dataset, coefficients)

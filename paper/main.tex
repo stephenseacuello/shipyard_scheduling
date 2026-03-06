@@ -558,23 +558,20 @@ Table~\ref{tab:plate_coefficients} reports representative coefficients for the 1
 
 \begin{table}[h]
 \centering
-\caption{Plate-count processing time coefficients by production stage (preliminary calibration)}
+\caption{Plate-count processing time coefficients by production stage. Fitted via constrained least-squares from simulation calibration data ($n=780$ records). All coefficients constrained $\geq 0$.}
 \label{tab:plate_coefficients}
-\begin{tabular}{clcccc}
+\begin{tabular}{clccccc}
 \toprule
-Stage & Name & $\beta^{\text{base}}$ (hrs) & $\beta^{\text{plate}}$ (hrs) & $\beta^{\text{curved}}$ (hrs) & $\beta^{\text{area}}$ (hrs/m$^2$) \\
+Stage & Name & $\beta^{\text{base}}$ & $\beta^{\text{plate}}$ & $\beta^{\text{curved}}$ & $\beta^{\text{area}}$ & $R^2$ \\
 \midrule
-0 & Steel Cutting & 2.0 & 0.15 & 0.00 & 0.01 \\
-1 & Part Fabrication & 3.0 & 0.25 & 0.50 & 0.02 \\
-2 & Panel Assembly & 4.0 & 0.30 & 0.40 & 0.03 \\
-3 & Block Assembly & 8.0 & 0.50 & 1.00 & 0.05 \\
-4 & Block Outfitting & 6.0 & 0.20 & 0.30 & 0.04 \\
-5 & Painting & 2.0 & 0.05 & 0.10 & 0.08 \\
-6 & Pre-Erection & 4.0 & 0.10 & 0.20 & 0.02 \\
-7 & Erection & 3.0 & 0.05 & 0.10 & 0.01 \\
-8 & Quay Outfitting & 10.0 & 0.10 & 0.05 & 0.02 \\
-9 & Sea Trials & 24.0 & 0.00 & 0.00 & 0.00 \\
-10 & Delivery & 0.0 & 0.00 & 0.00 & 0.00 \\
+0 & Steel Cutting & 1.60 & 0.294 & 0.596 & 0.000 & 0.937 \\
+1 & Part Fabrication & 2.35 & 0.318 & 0.829 & 0.003 & 0.964 \\
+2 & Panel Assembly & 2.98 & 0.048 & 0.000 & 0.004 & 0.945 \\
+3 & Block Assembly & 9.22 & 0.249 & 0.000 & 0.005 & \textbf{0.985} \\
+4 & Block Outfitting & 9.46 & 0.099 & 0.010 & 0.000 & 0.510 \\
+5 & Painting & 3.57 & 0.000 & 0.000 & 0.010 & 0.916 \\
+6 & Pre-Erection & 5.58 & 0.031 & 0.029 & 0.000 & 0.369 \\
+7--10 & Erection--Delivery & \multicolumn{5}{c}{(fixed durations, no plate dependence)} \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -601,7 +598,7 @@ The coefficients $\beta_i$ in Equation~\ref{eq:plate_time} are fitted via ordina
     \item \textbf{Integration}: Export fitted coefficients to YAML configuration for the simulation environment
 \end{enumerate}
 
-\noindent Until partner data is available, we use synthetic coefficients (Table~\ref{tab:plate_coefficients}) calibrated to match the lognormal duration distributions in the baseline environment.
+\noindent Table~\ref{tab:plate_coefficients} reports coefficients fitted via constrained least-squares regression from simulation calibration data (780 records across 7 stages). Five of seven stages achieve $R^2 > 0.90$, with block assembly reaching $R^2 = 0.985$. These coefficients use synthetic plate distributions; final validation requires the partner's real 3D model exports and historical duration records.
 
 %==============================================================================
 \section{Supply Chain Extension}
@@ -1103,7 +1100,52 @@ Lognormal (baseline) & 111.9 & 1.1 & 0.112 & High \\
 \end{tabular}
 \end{table}
 
-The plate-count model yields marginally higher throughput (+1.2\%) and notably lower variance across seeds (std dev 0.8 vs 1.1), reflecting the reduced stochasticity of deterministic geometry-driven durations compared to randomly sampled lognormal times. We emphasize that these results use \textit{synthetic} plate decomposition data with preliminary coefficients (Table~\ref{tab:plate_coefficients}); final validation requires the partner's real 3D model exports and historical duration records.
+The plate-count model yields marginally higher throughput (+1.2\%) and notably lower variance across seeds (std dev 0.8 vs 1.1), reflecting the reduced stochasticity of deterministic geometry-driven durations compared to randomly sampled lognormal times.
+
+\paragraph{Calibration Validation.}
+Constrained least-squares fitting on 780 calibration records yields $R^2 > 0.90$ for five of seven stages (Table~\ref{tab:plate_coefficients}), with block assembly reaching $R^2 = 0.985$ (RMSE = 12.9 hours). The two lower-$R^2$ stages (block outfitting $R^2 = 0.51$, pre-erection $R^2 = 0.37$) exhibit narrow duration ranges where plate count has limited predictive power. These results use synthetic plate distributions; final validation requires real 3D model exports and historical duration records.
+
+\paragraph{Cross-Instance Scalability.}
+Table~\ref{tab:cross_config} compares Expert, MPC, and GA across instance sizes with 5 seeds each. On the small instance (50 blocks), all agents achieve 100\% block completion; GA slightly outperforms Expert ($p=0.012$, $d=-3.57$). On medium HHI (200 blocks), Expert dominates: $110.8 \pm 1.2$ blocks versus MPC $23.8 \pm 1.2$ and GA $12.0 \pm 5.1$. MPC's adaptive horizon fix prevents solver timeout but the greedy EDD dispatch handles most decisions; GA's chromosome evolution is impractical at 1000+ seconds per episode.
+
+\paragraph{Curriculum DAgger Scaling.}
+Direct DAgger training achieves 99.7\% of expert on small (50 blocks) but 0\% on medium (200 blocks) due to distribution shift. We apply curriculum learning with three stages (tiny$\to$small$\to$medium), observation normalization via running mean-std, per-stage beta annealing ($0.8 \to 0.2$), and 50\% dataset retention across stages. After 19.8 hours of training (Table~\ref{tab:curriculum_dagger}), the curriculum policy achieves 100\% of expert on tiny and small stages. On medium, throughput rises from 0\% to \textbf{34.3\%} of expert ($\approx$39 blocks), with learning emerging at iteration~5 ($\beta=0.53$) and saturating by iteration~8. However, the training loss diverges ($1.79 \to 2.77$), indicating the 256-dim policy network cannot fully represent the 200-block action space. This suggests that larger networks or attention-based action heads are needed for full-scale transfer.
+
+\begin{table}[h]
+\centering
+\caption{Curriculum DAgger results: 3-stage training (10 iterations/stage, 20 epochs).}
+\label{tab:curriculum_dagger}
+\begin{tabular}{lccccc}
+\toprule
+Stage & Blocks & Expert & DAgger & \% Expert & Loss Trend \\
+\midrule
+Tiny (10 blocks) & 10 & 0.0202 & 0.0204 & \textbf{100.6\%} & $0.04 \to 0.006$ $\downarrow$ \\
+Small (50 blocks) & 50 & 0.1000 & 0.1000 & \textbf{100.0\%} & $0.10 \to 0.023$ $\downarrow$ \\
+Medium (200 blocks) & 200 & 0.1123 & 0.0385 & \textbf{34.3\%} & $1.79 \to 2.77$ $\uparrow$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{Cross-config statistical comparison (5 seeds, 1000 steps). Mann-Whitney U $p$-values for pairwise throughput comparisons.}
+\label{tab:cross_config}
+\begin{tabular}{llcccc}
+\toprule
+Config & Agent & Blocks & Throughput & 95\% CI & Wall Time (s) \\
+\midrule
+\multirow{3}{*}{Small (50)}
+& Expert & 50 & 0.0528 & [0.051, 0.055] & 0.7 \\
+& MPC & 50 & 0.0551 & [0.053, 0.058] & 0.5 \\
+& GA & 50 & \textbf{0.0576} & [0.056, 0.059] & 103.8 \\
+\midrule
+\multirow{3}{*}{Medium (200)}
+& \textbf{Expert} & \textbf{111} & \textbf{0.1108} & [0.109, 0.112] & 3.3 \\
+& MPC & 24 & 0.0238 & [0.022, 0.025] & 1.8 \\
+& GA & 12 & 0.0120 & [0.006, 0.019] & 1022 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \begin{table}[h]
 \centering
