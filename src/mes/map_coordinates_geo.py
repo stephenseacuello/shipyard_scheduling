@@ -725,7 +725,6 @@ def get_goliath_crane_position(crane_id: str, position_pct: float = 0.5) -> Tupl
         for dock_name, cranes in [
             ("dock_1", ["GC01", "GC02"]),
             ("dock_2", ["GC03"]),
-            ("dock_3", ["GC04"]),
             ("dock_3", ["GC04", "GC05"]),
             ("dock_4", ["GC06"]),
             ("dock_5", ["GC07"]),
