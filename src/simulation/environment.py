@@ -314,7 +314,8 @@ class ShipyardEnv(gym.Env):
         "dock_7": ProductionStage.ERECTION,
         "dock_8": ProductionStage.ERECTION,
         "dock_9": ProductionStage.ERECTION,
-        "dock_10": ProductionStage.ERECTION,
+        "dock_10": ProductionStage.ERECTION,  # Legacy alias
+        "h_dock": ProductionStage.ERECTION,
         # Default/flat config facility names (for default.yaml)
         "cutting": ProductionStage.STEEL_CUTTING,
         "panel": ProductionStage.PANEL_ASSEMBLY,

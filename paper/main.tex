@@ -102,7 +102,16 @@ We demonstrate that \textbf{Dataset Aggregation (DAgger)} avoids entropy collaps
 
 \subsection{Industrial Case Study: HHI Ulsan Shipyard}
 
-We validate our approach on HD Hyundai Heavy Industries (HHI) Ulsan---the world's largest shipbuilding facility spanning 1,780 acres along 4 kilometers of coastline on Mipo Bay. The Ulsan shipyard produces LNG carriers with each ship comprising approximately 200 blocks weighing up to 900 tons. The facility operates 10 dry docks served by 9 Goliath cranes standing 109 meters tall. Figure~\ref{fig:workflow} illustrates the 11-stage production workflow.
+We validate our approach on HD Hyundai Heavy Industries (HHI) Ulsan---the world's largest shipbuilding facility spanning 1,780 acres along 4 kilometers of coastline on Mipo Bay. The Ulsan shipyard produces LNG carriers with each ship comprising approximately 200 blocks weighing up to 900 tons. The facility operates 10 dry docks served by 9 Goliath cranes standing 109 meters tall. Figure~\ref{fig:shipyard_layout} shows the facility layout with production zones, and Figure~\ref{fig:workflow} illustrates the 11-stage production workflow.
+
+Key dock specifications from published data~\cite{ship_tech_hhi}: Dock~3 (672m $\times$ 92m) is the world's largest, capable of simultaneously constructing vessels up to 1M~DWT with two Goliath cranes. The H-Dock (490m $\times$ 115m $\times$ 13.5m) is the world's first dry dock purpose-built for offshore vessels. Dock~1 (390m $\times$ 80m) specializes in LNG carriers, while Docks~8--9 (built 1996) handle VLCCs.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/shipyard_layout.pdf}
+\caption{HD Hyundai Heavy Industries Ulsan shipyard facility layout. Production flows left-to-right from steel processing through panel/block assembly, outfitting, and painting to pre-erection staging, then into 10 dry docks along Mipo Bay. Dock~3 (672m) is the world's largest; H-Dock (490m) is purpose-built for offshore vessels. 9 Goliath cranes (109m tall, up to 900-ton capacity) serve the dock complex.}
+\label{fig:shipyard_layout}
+\end{figure*}
 
 \subsection{Contributions}
 
@@ -1103,13 +1112,34 @@ Lognormal (baseline) & 111.9 & 1.1 & 0.112 & High \\
 The plate-count model yields marginally higher throughput (+1.2\%) and notably lower variance across seeds (std dev 0.8 vs 1.1), reflecting the reduced stochasticity of deterministic geometry-driven durations compared to randomly sampled lognormal times.
 
 \paragraph{Calibration Validation.}
-Constrained least-squares fitting on 780 calibration records yields $R^2 > 0.90$ for five of seven stages (Table~\ref{tab:plate_coefficients}), with block assembly reaching $R^2 = 0.985$ (RMSE = 12.9 hours). The two lower-$R^2$ stages (block outfitting $R^2 = 0.51$, pre-erection $R^2 = 0.37$) exhibit narrow duration ranges where plate count has limited predictive power. These results use synthetic plate distributions; final validation requires real 3D model exports and historical duration records.
+Constrained least-squares fitting on 780 calibration records yields $R^2 > 0.90$ for five of seven stages (Table~\ref{tab:plate_coefficients}), with block assembly reaching $R^2 = 0.985$ (RMSE = 12.9 hours). The two lower-$R^2$ stages (block outfitting $R^2 = 0.51$, pre-erection $R^2 = 0.37$) exhibit narrow duration ranges where plate count has limited predictive power. These results use synthetic plate distributions; final validation requires real 3D model exports and historical duration records. Figure~\ref{fig:calibration_r2} visualizes the dramatic improvement across all stages.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.9\columnwidth]{figures/calibration_r2.pdf}
+\caption{Calibration R$^2$ before and after the p0 bug fix. Block assembly improves from $R^2 = -0.03$ to $0.985$; five of seven stages now exceed $R^2 = 0.90$.}
+\label{fig:calibration_r2}
+\end{figure}
 
 \paragraph{Cross-Instance Scalability.}
 Table~\ref{tab:cross_config} compares Expert, MPC, and GA across instance sizes with 5 seeds each. On the small instance (50 blocks), all agents achieve 100\% block completion; GA slightly outperforms Expert ($p=0.012$, $d=-3.57$). On medium HHI (200 blocks), Expert dominates: $110.8 \pm 1.2$ blocks versus MPC $23.8 \pm 1.2$ and GA $12.0 \pm 5.1$. MPC's adaptive horizon fix prevents solver timeout but the greedy EDD dispatch handles most decisions; GA's chromosome evolution is impractical at 1000+ seconds per episode.
 
 \paragraph{Curriculum DAgger Scaling.}
-Direct DAgger training achieves 99.7\% of expert on small (50 blocks) but 0\% on medium (200 blocks) due to distribution shift. We apply curriculum learning with three stages (tiny$\to$small$\to$medium), observation normalization via running mean-std, per-stage beta annealing ($0.8 \to 0.2$), and 50\% dataset retention across stages. After 19.8 hours of training (Table~\ref{tab:curriculum_dagger}), the curriculum policy achieves 100\% of expert on tiny and small stages. On medium, throughput rises from 0\% to \textbf{34.3\%} of expert ($\approx$39 blocks), with learning emerging at iteration~5 ($\beta=0.53$) and saturating by iteration~8. However, the training loss diverges ($1.79 \to 2.77$), indicating the 256-dim policy network cannot fully represent the 200-block action space. This suggests that larger networks or attention-based action heads are needed for full-scale transfer.
+Direct DAgger training achieves 99.7\% of expert on small (50 blocks) but 0\% on medium (200 blocks) due to distribution shift. We apply curriculum learning with three stages (tiny$\to$small$\to$medium), observation normalization via running mean-std, per-stage beta annealing ($0.8 \to 0.2$), and 50\% dataset retention across stages. After 19.8 hours of training (Table~\ref{tab:curriculum_dagger}), the curriculum policy achieves 100\% of expert on tiny and small stages. On medium, throughput rises from 0\% to \textbf{34.3\%} of expert ($\approx$39 blocks), with learning emerging at iteration~5 ($\beta=0.53$) and saturating by iteration~8. However, the training loss diverges ($1.79 \to 2.77$), indicating the 256-dim policy network cannot fully represent the 200-block action space. This suggests that larger networks or attention-based action heads are needed for full-scale transfer. Figure~\ref{fig:curriculum_dagger} shows the per-iteration learning dynamics across all three stages, and Figure~\ref{fig:cross_config} compares agent performance across instance sizes.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.95\columnwidth]{figures/curriculum_dagger.pdf}
+\caption{Curriculum DAgger training across 3 stages (19.8h total). Top: throughput vs. expert baseline (dashed). Bottom: training loss. Tiny and small stages converge; medium stage shows diverging loss but emerging throughput (0$\to$0.04).}
+\label{fig:curriculum_dagger}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.85\columnwidth]{figures/cross_config_comparison.pdf}
+\caption{Cross-instance agent comparison (5 seeds, 95\% CI error bars). Small instance: all agents complete 50 blocks. Medium: Expert dominates with 111 blocks vs. MPC 24 and GA 12.}
+\label{fig:cross_config}
+\end{figure}
 
 \begin{table}[h]
 \centering

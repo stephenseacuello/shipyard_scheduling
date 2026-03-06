@@ -118,44 +118,44 @@ PRE_ERECTION: Dict[str, FacilityCoord] = {
 
 DRY_DOCKS: Dict[str, FacilityCoord] = {
     "dock_1": FacilityCoord(
-        x=900, y=30, width=180, height=55,
-        label="DOCK 1 (490m VLCC/LNG)", color="#e74c3c"
+        x=900, y=30, width=150, height=50,
+        label="DOCK 1 (390m LNG)", color="#e74c3c"
     ),
     "dock_2": FacilityCoord(
-        x=900, y=95, width=160, height=50,
-        label="DOCK 2 (400m)", color="#e74c3c"
+        x=900, y=90, width=170, height=52,
+        label="DOCK 2 (500m)", color="#e74c3c"
     ),
     "dock_3": FacilityCoord(
-        x=900, y=155, width=160, height=50,
-        label="DOCK 3 (400m)", color="#e74c3c"
+        x=900, y=152, width=200, height=60,
+        label="DOCK 3 (672m MEGA)", color="#e74c3c"
     ),
     "dock_4": FacilityCoord(
-        x=900, y=215, width=155, height=50,
-        label="DOCK 4 (390m LNG)", color="#e74c3c"
+        x=900, y=222, width=150, height=48,
+        label="DOCK 4 (390m 150kDWT)", color="#e74c3c"
     ),
     "dock_5": FacilityCoord(
-        x=900, y=275, width=145, height=45,
-        label="DOCK 5 (360m)", color="#c0392b"
+        x=900, y=280, width=120, height=42,
+        label="DOCK 5 (300m 70kDWT)", color="#c0392b"
     ),
     "dock_6": FacilityCoord(
-        x=900, y=330, width=140, height=45,
-        label="DOCK 6 (350m)", color="#c0392b"
+        x=900, y=332, width=110, height=40,
+        label="DOCK 6 (280m Naval)", color="#c0392b"
     ),
     "dock_7": FacilityCoord(
-        x=900, y=385, width=130, height=45,
-        label="DOCK 7 (320m)", color="#c0392b"
+        x=900, y=382, width=105, height=38,
+        label="DOCK 7 (260m Naval)", color="#c0392b"
     ),
     "dock_8": FacilityCoord(
-        x=900, y=440, width=120, height=42,
-        label="DOCK 8 (300m)", color="#922b21"
+        x=900, y=430, width=140, height=45,
+        label="DOCK 8 (350m VLCC)", color="#922b21"
     ),
     "dock_9": FacilityCoord(
-        x=900, y=492, width=115, height=40,
-        label="DOCK 9 (280m)", color="#922b21"
+        x=900, y=485, width=130, height=42,
+        label="DOCK 9 (320m VLCC)", color="#922b21"
     ),
-    "dock_10": FacilityCoord(
-        x=900, y=542, width=110, height=38,
-        label="DOCK 10 (260m)", color="#922b21"
+    "h_dock": FacilityCoord(
+        x=900, y=537, width=180, height=55,
+        label="H-DOCK (490m Offshore)", color="#8e44ad"
     ),
 }
 
@@ -228,26 +228,26 @@ HHI_FACILITIES: Dict[str, FacilityCoord] = {
 # ============================================================================
 
 GOLIATH_CRANE_POSITIONS: Dict[str, Tuple[float, float]] = {
-    "GC01": (1090, 50),   # Dock 1
-    "GC02": (1090, 75),   # Dock 1
-    "GC03": (1070, 115),  # Dock 2
-    "GC04": (1070, 175),  # Dock 3
-    "GC05": (1065, 235),  # Dock 4
-    "GC06": (1065, 255),  # Dock 4
-    "GC07": (1055, 295),  # Dock 5
-    "GC08": (1030, 460),  # Dock 8
-    "GC09": (1020, 555),  # Dock 10
+    "GC01": (1060, 45),   # Dock 1
+    "GC02": (1060, 70),   # Dock 1
+    "GC03": (1080, 115),  # Dock 2
+    "GC04": (1110, 170),  # Dock 3 (mega dock)
+    "GC05": (1110, 200),  # Dock 3 (mega dock)
+    "GC06": (1060, 240),  # Dock 4
+    "GC07": (1030, 295),  # Dock 5
+    "GC08": (1050, 450),  # Dock 8
+    "GC09": (1090, 560),  # H-Dock
 }
 
 # Crane rail definitions for each dock
 CRANE_RAILS: Dict[str, Dict[str, float]] = {
-    "dock_1": {"y": 55, "x_start": 900, "x_end": 1080},
-    "dock_2": {"y": 115, "x_start": 900, "x_end": 1060},
-    "dock_3": {"y": 175, "x_start": 900, "x_end": 1060},
-    "dock_4": {"y": 235, "x_start": 900, "x_end": 1055},
-    "dock_5": {"y": 295, "x_start": 900, "x_end": 1045},
-    "dock_8": {"y": 460, "x_start": 900, "x_end": 1020},
-    "dock_10": {"y": 560, "x_start": 900, "x_end": 1010},
+    "dock_1": {"y": 55, "x_start": 900, "x_end": 1050},
+    "dock_2": {"y": 115, "x_start": 900, "x_end": 1070},
+    "dock_3": {"y": 182, "x_start": 900, "x_end": 1100},
+    "dock_4": {"y": 245, "x_start": 900, "x_end": 1050},
+    "dock_5": {"y": 298, "x_start": 900, "x_end": 1020},
+    "dock_8": {"y": 450, "x_start": 900, "x_end": 1040},
+    "h_dock": {"y": 562, "x_start": 900, "x_end": 1080},
 }
 
 # ============================================================================

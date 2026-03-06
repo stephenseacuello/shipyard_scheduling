@@ -127,96 +127,97 @@ pre_erection:
       description: "Grand block joining and staging - south yard"
 
 # Zone 5: Dry Docks (Eastern coastline along Mipo Bay)
+# Real HHI Ulsan specs from ship-technology.com and Wikipedia
 dry_docks:
   - name: dock_1
-    length_m: 490
-    width_m: 115
-    depth_m: 13.5
+    length_m: 390
+    width_m: 80
+    depth_m: 12.0
     capacity: 1
-    ship_types: ["vlcc", "lng_carrier", "ulcs"]
+    ship_types: ["lng_carrier", "lpg_carrier"]
     cranes: ["GC01", "GC02"]
-    description: "Dock 1 - VLCC/LNG capable, largest dock"
+    description: "Dock 1 - LNG carriers, 2 Goliath cranes, T-dock extension (165m x 47m)"
 
   - name: dock_2
-    length_m: 400
+    length_m: 500
     width_m: 80
-    depth_m: 12.0
+    depth_m: 12.7
     capacity: 1
-    ship_types: ["lng_carrier", "container", "tanker"]
+    ship_types: ["vlcc", "lng_carrier", "container", "tanker"]
     cranes: ["GC03"]
-    description: "Dock 2 - LNG/Container dock"
+    description: "Dock 2 - 2 jib cranes, deep dock"
 
   - name: dock_3
-    length_m: 400
-    width_m: 80
-    depth_m: 12.0
-    capacity: 1
-    ship_types: ["lng_carrier", "container", "tanker"]
-    cranes: ["GC04"]
-    description: "Dock 3 - LNG/Container dock"
+    length_m: 672
+    width_m: 92
+    depth_m: 13.0
+    capacity: 2  # Can build multiple ships simultaneously
+    ship_types: ["vlcc", "ulcs", "lng_carrier", "container", "tanker"]
+    cranes: ["GC04", "GC05"]
+    description: "Dock 3 - MEGA dock (largest), up to 1M DWT, simultaneous construction"
 
   - name: dock_4
     length_m: 390
     width_m: 80
     depth_m: 11.5
     capacity: 1
-    ship_types: ["lng_carrier", "lpg_carrier"]
-    cranes: ["GC05", "GC06"]
-    description: "Dock 4 - LNG/LPG specialized"
+    ship_types: ["container", "tanker", "bulk"]
+    cranes: ["GC06"]
+    description: "Dock 4 - Up to 150K DWT"
 
   - name: dock_5
-    length_m: 360
+    length_m: 300
     width_m: 68
     depth_m: 11.0
     capacity: 1
     ship_types: ["container", "tanker", "bulk"]
     cranes: ["GC07"]
-    description: "Dock 5 - Medium vessels"
+    description: "Dock 5 - Up to 70K DWT"
 
   - name: dock_6
-    length_m: 350
-    width_m: 65
+    length_m: 280
+    width_m: 60
     depth_m: 10.5
     capacity: 1
-    ship_types: ["container", "tanker", "bulk"]
+    ship_types: ["naval", "special"]
     cranes: []
-    description: "Dock 6 - Medium vessels, crane-shared"
+    description: "Dock 6 - Naval/special-purpose vessels"
 
   - name: dock_7
-    length_m: 320
-    width_m: 60
+    length_m: 260
+    width_m: 55
     depth_m: 10.0
     capacity: 1
-    ship_types: ["tanker", "bulk", "car_carrier"]
+    ship_types: ["naval", "special"]
     cranes: []
-    description: "Dock 7 - Smaller vessels"
+    description: "Dock 7 - Naval/special-purpose vessels"
 
   - name: dock_8
-    length_m: 300
-    width_m: 55
+    length_m: 350
+    width_m: 65
     depth_m: 9.5
     capacity: 1
-    ship_types: ["bulk", "car_carrier", "ropax"]
+    ship_types: ["vlcc", "tanker", "bulk"]
     cranes: ["GC08"]
-    description: "Dock 8 - Specialized vessels"
+    description: "Dock 8 - VLCCs (built 1996)"
 
   - name: dock_9
-    length_m: 280
-    width_m: 50
+    length_m: 320
+    width_m: 60
     depth_m: 9.0
     capacity: 1
-    ship_types: ["offshore", "special"]
+    ship_types: ["vlcc", "tanker", "bulk"]
     cranes: []
-    description: "Dock 9 - Offshore/Special vessels"
+    description: "Dock 9 - VLCCs (built 1996)"
 
-  - name: dock_10
-    length_m: 260
-    width_m: 45
-    depth_m: 8.5
+  - name: h_dock
+    length_m: 490
+    width_m: 115
+    depth_m: 13.5
     capacity: 1
-    ship_types: ["offshore", "naval", "special"]
+    ship_types: ["offshore", "fpso", "special"]
     cranes: ["GC09"]
-    description: "Dock 10 - Naval/Offshore vessels"
+    description: "H-Dock - World's first offshore vessel dry dock"
 
 # Zone 6: Outfitting Quays (Southeast coastline)
 outfitting_quays:
@@ -277,11 +278,11 @@ goliath_cranes:
     rail_length_m: 420
 
   - id: GC05
-    assigned_dock: dock_4
+    assigned_dock: dock_3
     capacity_tons: 900
     height_m: 109
     span_m: 100
-    rail_length_m: 410
+    rail_length_m: 690
 
   - id: GC06
     assigned_dock: dock_4
@@ -305,11 +306,11 @@ goliath_cranes:
     rail_length_m: 320
 
   - id: GC09
-    assigned_dock: dock_10
-    capacity_tons: 450
-    height_m: 75
-    span_m: 60
-    rail_length_m: 280
+    assigned_dock: h_dock
+    capacity_tons: 900
+    height_m: 109
+    span_m: 130
+    rail_length_m: 500
 
 # Transporters (SPMT/DCT fleet)
 transporters:
@@ -415,7 +416,7 @@ transport_network:
     dock_7: 1.5
     dock_8: 1.75
     dock_9: 2.0
-    dock_10: 2.25
+    h_dock: 2.5
 
   # Dry Docks to Outfitting Quays (post-launch)
   dock_1:
@@ -438,7 +439,7 @@ transport_network:
     quay_3: 0.75
   dock_9:
     quay_3: 1.0
-  dock_10:
+  h_dock:
     quay_3: 1.25
 
 # =============================================================================

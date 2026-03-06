@@ -373,17 +373,18 @@ HHI_ULSAN_DEFAULT_CONFIG = {
             {"name": "grand_block_staging_south", "processing_time_mean": 24.0, "processing_time_std": 6.0, "capacity": 20},
         ],
     },
+    # Real HHI Ulsan dry dock specifications (ship-technology.com, Wikipedia)
     "dry_docks": [
-        {"name": "dock_1", "length_m": 490, "width_m": 115, "cranes": ["GC01", "GC02"]},
-        {"name": "dock_2", "length_m": 400, "width_m": 80, "cranes": ["GC03"]},
-        {"name": "dock_3", "length_m": 400, "width_m": 80, "cranes": ["GC04"]},
-        {"name": "dock_4", "length_m": 390, "width_m": 80, "cranes": ["GC05", "GC06"]},
-        {"name": "dock_5", "length_m": 360, "width_m": 68, "cranes": ["GC07"]},
-        {"name": "dock_6", "length_m": 350, "width_m": 65, "cranes": []},
-        {"name": "dock_7", "length_m": 320, "width_m": 60, "cranes": []},
-        {"name": "dock_8", "length_m": 300, "width_m": 55, "cranes": ["GC08"]},
-        {"name": "dock_9", "length_m": 280, "width_m": 50, "cranes": []},
-        {"name": "dock_10", "length_m": 260, "width_m": 45, "cranes": ["GC09"]},
+        {"name": "dock_1", "length_m": 390, "width_m": 80, "cranes": ["GC01", "GC02"]},   # LNG carriers
+        {"name": "dock_2", "length_m": 500, "width_m": 80, "depth_m": 12.7, "cranes": ["GC03"]},  # 2 jib cranes
+        {"name": "dock_3", "length_m": 672, "width_m": 92, "cranes": ["GC04", "GC05"]},    # Largest, up to 1M DWT
+        {"name": "dock_4", "length_m": 390, "width_m": 80, "cranes": ["GC06"]},             # Up to 150K DWT
+        {"name": "dock_5", "length_m": 300, "width_m": 68, "cranes": ["GC07"]},             # Up to 70K DWT
+        {"name": "dock_6", "length_m": 280, "width_m": 60, "cranes": []},                   # Naval/special
+        {"name": "dock_7", "length_m": 260, "width_m": 55, "cranes": []},                   # Naval/special
+        {"name": "dock_8", "length_m": 350, "width_m": 65, "cranes": ["GC08"]},             # VLCCs (1996)
+        {"name": "dock_9", "length_m": 320, "width_m": 60, "cranes": []},                   # VLCCs (1996)
+        {"name": "h_dock", "length_m": 490, "width_m": 115, "depth_m": 13.5, "cranes": ["GC09"]},  # Offshore vessels
     ],
     "outfitting_quays": [
         {"name": "quay_1", "length_m": 400, "capacity": 2},
@@ -395,11 +396,11 @@ HHI_ULSAN_DEFAULT_CONFIG = {
         {"id": "GC02", "assigned_dock": "dock_1", "capacity_tons": 900, "height_m": 109},
         {"id": "GC03", "assigned_dock": "dock_2", "capacity_tons": 900, "height_m": 109},
         {"id": "GC04", "assigned_dock": "dock_3", "capacity_tons": 900, "height_m": 109},
-        {"id": "GC05", "assigned_dock": "dock_4", "capacity_tons": 900, "height_m": 109},
+        {"id": "GC05", "assigned_dock": "dock_3", "capacity_tons": 900, "height_m": 109},
         {"id": "GC06", "assigned_dock": "dock_4", "capacity_tons": 600, "height_m": 90},
         {"id": "GC07", "assigned_dock": "dock_5", "capacity_tons": 600, "height_m": 90},
         {"id": "GC08", "assigned_dock": "dock_8", "capacity_tons": 450, "height_m": 75},
-        {"id": "GC09", "assigned_dock": "dock_10", "capacity_tons": 450, "height_m": 75},
+        {"id": "GC09", "assigned_dock": "h_dock", "capacity_tons": 900, "height_m": 109},
     ],
     "staging_areas": [
         {"name": "steel_staging", "capacity": 100},
@@ -422,7 +423,7 @@ HHI_ULSAN_DEFAULT_CONFIG = {
         "outfitting_shop": {"paint_shop": 0.5, "block_staging_east": 0.5},
         "paint_shop": {"grand_block_staging_north": 0.75, "grand_block_staging_south": 0.75, "painted_block_storage": 0.25},
         "grand_block_staging_north": {"dock_1": 1.0, "dock_2": 1.25, "dock_3": 1.5, "dock_4": 1.75, "dock_5": 2.0},
-        "grand_block_staging_south": {"dock_5": 1.0, "dock_6": 1.25, "dock_7": 1.5, "dock_8": 1.75, "dock_9": 2.0, "dock_10": 2.25},
+        "grand_block_staging_south": {"dock_5": 1.0, "dock_6": 1.25, "dock_7": 1.5, "dock_8": 1.75, "dock_9": 2.0, "h_dock": 2.5},
         "spmt_depot": {"steel_stockyard": 0.5, "block_staging_west": 0.5, "grand_block_staging_north": 0.75},
     },
 }
@@ -496,7 +497,7 @@ class HHIShipyardGraph(ShipyardGraph):
             "dock_7": ("quay_3", 0.5),
             "dock_8": ("quay_3", 0.75),
             "dock_9": ("quay_3", 1.0),
-            "dock_10": ("quay_3", 1.25),
+            "h_dock": ("quay_3", 1.25),
         }
         for dock, (quay, time) in dock_quay_map.items():
             if self.graph.has_node(dock) and self.graph.has_node(quay):
