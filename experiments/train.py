@@ -173,7 +173,6 @@ def main() -> None:
     parser.add_argument("--curriculum", action="store_true", help="Enable curriculum learning")
     parser.add_argument("--no-db-log", action="store_true", help="Disable MES database logging")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
-    parser.add_argument("--dual-yard", action="store_true", help="Use dual-yard environment (Quonset + Groton)")
     # Wandb arguments
     parser.add_argument("--wandb", action="store_true", help="Enable Weights & Biases logging")
     parser.add_argument("--wandb-project", type=str, default="shipyard-scheduling", help="W&B project name")
@@ -225,9 +224,6 @@ def main() -> None:
     train_cfg = splits.get_train_config()
     val_cfg = splits.get_val_config()
 
-    # Create environment (single-yard only for HHI - dual-yard deprecated)
-    if args.dual_yard:
-        print("WARNING: --dual-yard is deprecated. Using single-yard HHI environment.")
     env = HHIShipyardEnv(train_cfg)
     if db_logging:
         env.db_logging_enabled = True
@@ -235,18 +231,8 @@ def main() -> None:
     # Create validation environment (separate seed, no randomization)
     val_env = HHIShipyardEnv(val_cfg)
 
-    # Determine SPMT and crane counts based on environment type
-    if args.dual_yard:
-        print("Using DUAL-YARD environment (Quonset Point ↔ Groton)")
-        print(f"  Quonset SPMTs: {env.n_quonset_spmts}, Cranes: {env.n_quonset_cranes}")
-        print(f"  Groton SPMTs: {env.n_groton_spmts}, Cranes: {env.n_groton_cranes}")
-        print(f"  Barges: {env.n_barges}, Super-modules: {env.n_super_modules}")
-        n_spmts = env.n_quonset_spmts + env.n_groton_spmts
-        n_cranes = env.n_quonset_cranes + env.n_groton_cranes
-    else:
-        print("Using SINGLE-YARD environment")
-        n_spmts = env.n_spmts
-        n_cranes = getattr(env, 'n_goliath_cranes', getattr(env, 'n_cranes', 2))
+    n_spmts = env.n_spmts
+    n_cranes = getattr(env, 'n_goliath_cranes', getattr(env, 'n_cranes', 2))
 
     # Create encoder and policy with upgraded architecture
     # Phase 3B: Increase capacity (hidden_dim 128→256, layers 2→4, policy 256→512)
@@ -260,7 +246,7 @@ def main() -> None:
         num_layers=args.num_layers,
     )
     state_dim = hidden_dim * 4  # four pooled node types (256*4 = 1024)
-    n_action_types = 6 if args.dual_yard else 4  # 6 for dual-yard (includes barge ops)
+    n_action_types = 4
     policy = ActorCriticPolicy(
         state_dim=state_dim,
         n_action_types=n_action_types,
@@ -333,7 +319,6 @@ def main() -> None:
                 blocks=env.entities['blocks'],
                 spmts=env.entities['spmts'],
                 cranes=env.entities.get('goliath_cranes', env.entities.get('cranes', [])),
-                barge=env.entities.get('barge'),
             )
         metrics = trainer.update(rollout)
         # Compute KPIs for this epoch

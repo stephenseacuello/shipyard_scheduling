@@ -568,9 +568,18 @@ def run_curriculum_training(
     # Save checkpoint
     save_dir = os.path.join(PROJECT_ROOT, "data", "checkpoints", "curriculum")
     os.makedirs(save_dir, exist_ok=True)
+    # Save normalizer state alongside model weights for reproducible inference
+    normalizer_state = None
+    if trainer.obs_normalizer is not None:
+        normalizer_state = {
+            "mean": trainer.obs_normalizer.mean,
+            "var": trainer.obs_normalizer.var,
+            "count": trainer.obs_normalizer.count,
+        }
     torch.save({
         "encoder": encoder.state_dict(),
         "policy": policy.state_dict(),
+        "normalizer": normalizer_state,
         "results": results,
     }, os.path.join(save_dir, "curriculum_dagger_final.pt"))
     

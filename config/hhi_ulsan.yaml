@@ -1,6 +1,14 @@
 # HD Hyundai Heavy Industries - Ulsan Shipyard Configuration
 # Models LNG Carrier production at Mipo Bay, Ulsan, South Korea
 # World's largest shipyard: 1,780 acres, 4km coastline, 10 dry docks, 9 Goliath cranes
+#
+# Processing times calibrated from NSRP/OECD benchmarks:
+#   - LNG carrier CGT: A=32, B=0.68 → CGT = 32 × 95000^0.68 ≈ 77,500 (OECD WP6 2007)
+#   - Korean mega-yard: ~16 man-hours/CGT (GSIBBS 2005, Lamb 2004)
+#   - Total: ~1,240,000 man-hours per 174,000 cbm LNG carrier
+#   - Equipment-hours = man-hours / crew_size (what simulation uses)
+#   - Stage breakdown: Storch et al. (1995), NSRP SP-7 panels
+#   - See data/calibration/nsrp_benchmarks.yaml for full derivation
 
 log_dir: /Users/stepheneacuello/Projects/shipyard_scheduling/logs/
 checkpoint_dir: /Users/stepheneacuello/Projects/shipyard_scheduling/data/checkpoints/
@@ -34,26 +42,30 @@ continuous_production: true  # Spawn new ships when old ones are delivered
 
 # =============================================================================
 # FACILITIES - Organized by production zone
+# Processing times calibrated from NSRP SP-7/SP-9 benchmarks
+# Source: 16 man-hours/CGT × 77,500 CGT ≈ 1,240,000 total man-hours per ship
+# Equipment-hours = man-hours / crew_size; CV = 0.25 (Shin et al. 2008)
+# See data/calibration/nsrp_benchmarks.yaml for full derivation
 # =============================================================================
 
 # Zone 1: Steel Processing (Northwest area)
 steel_processing:
   facilities:
     - name: steel_stockyard
-      processing_time_mean: 4.0  # hours
+      processing_time_mean: 4.0  # hours - staging only
       processing_time_std: 1.0
       capacity: 50
       description: "Raw steel plate storage and staging"
 
     - name: cutting_shop
-      processing_time_mean: 8.0
-      processing_time_std: 2.0
+      processing_time_mean: 21.2  # NSRP: 170 man-hrs / 8 crew
+      processing_time_std: 5.3    # CV=0.25
       capacity: 20
       description: "NC plasma cutting, marking, edge preparation"
 
     - name: part_fabrication
-      processing_time_mean: 12.0
-      processing_time_std: 3.0
+      processing_time_mean: 33.9  # NSRP: 271 man-hrs / 8 crew
+      processing_time_std: 8.5
       capacity: 30
       description: "Part bending, forming, sub-assembly"
 
@@ -61,20 +73,20 @@ steel_processing:
 panel_assembly:
   facilities:
     - name: flat_panel_line_1
-      processing_time_mean: 16.0
-      processing_time_std: 4.0
+      processing_time_mean: 50.9  # NSRP: 407 man-hrs / 8 crew
+      processing_time_std: 12.7
       capacity: 15
       description: "Flat panel assembly line 1 - bottom/side panels"
 
     - name: flat_panel_line_2
-      processing_time_mean: 16.0
-      processing_time_std: 4.0
+      processing_time_mean: 50.9  # NSRP: same as line 1
+      processing_time_std: 12.7
       capacity: 15
       description: "Flat panel assembly line 2 - deck panels"
 
     - name: curved_block_shop
-      processing_time_mean: 24.0
-      processing_time_std: 6.0
+      processing_time_mean: 76.4  # 50.9 × 1.50 curved multiplier
+      processing_time_std: 19.1
       capacity: 8
       description: "Specialized curved block fabrication - bow/stern sections"
 
@@ -82,32 +94,32 @@ panel_assembly:
 block_assembly:
   facilities:
     - name: block_assembly_hall_1
-      processing_time_mean: 48.0
-      processing_time_std: 12.0
+      processing_time_mean: 76.3  # NSRP: 611 man-hrs / 8 crew
+      processing_time_std: 19.1
       capacity: 10
       description: "3D block construction hall 1 - up to 400 tons"
 
     - name: block_assembly_hall_2
-      processing_time_mean: 48.0
-      processing_time_std: 12.0
+      processing_time_mean: 76.3
+      processing_time_std: 19.1
       capacity: 10
       description: "3D block construction hall 2 - up to 400 tons"
 
     - name: block_assembly_hall_3
-      processing_time_mean: 48.0
-      processing_time_std: 12.0
+      processing_time_mean: 76.3
+      processing_time_std: 19.1
       capacity: 8
       description: "3D block construction hall 3 - specialized/engine room"
 
     - name: outfitting_shop
-      processing_time_mean: 40.0
-      processing_time_std: 10.0
+      processing_time_mean: 63.6  # NSRP: 509 man-hrs / 8 crew
+      processing_time_std: 15.9
       capacity: 12
       description: "Pre-erection outfitting - piping, electrical, HVAC, insulation"
 
     - name: paint_shop
-      processing_time_mean: 16.0
-      processing_time_std: 4.0
+      processing_time_mean: 29.7  # NSRP: 237 man-hrs / 8 crew
+      processing_time_std: 7.4
       capacity: 8
       description: "Block painting and coating facility"
 
@@ -115,14 +127,14 @@ block_assembly:
 pre_erection:
   facilities:
     - name: grand_block_staging_north
-      processing_time_mean: 24.0
-      processing_time_std: 6.0
+      processing_time_mean: 42.4  # NSRP: 339 man-hrs / 8 crew
+      processing_time_std: 10.6
       capacity: 20
       description: "Grand block joining and staging - north yard"
 
     - name: grand_block_staging_south
-      processing_time_mean: 24.0
-      processing_time_std: 6.0
+      processing_time_mean: 42.4
+      processing_time_std: 10.6
       capacity: 20
       description: "Grand block joining and staging - south yard"
 

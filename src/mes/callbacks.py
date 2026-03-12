@@ -15,7 +15,6 @@ from .database import (
     list_simulation_runs, fetch_playback_timeline_for_run,
     fetch_plate_stats, fetch_plate_processing_times,
 )
-from .map_builder import build_quonset_map, build_groton_map, build_transit_map
 from .dependency_graph import build_dependency_graph, build_critical_path_view
 
 # Try to import leaflet map builder
@@ -92,9 +91,6 @@ def register_callbacks(app: dash.Dash) -> None:
     @app.callback(Output("tab-content", "children"), Input("tabs", "value"))
     def render_tab(tab):
         tab_map = {
-            "dual-map": layouts.hhi_map_layout,
-            "quonset-map": layouts.hhi_map_layout,
-            "groton-map": layouts.hhi_map_layout,
             "hhi-map": layouts.hhi_map_layout,
             "dependencies": layouts.dependencies_layout,
             "gnn-graph": layouts.gnn_graph_layout,
@@ -970,45 +966,12 @@ def register_callbacks(app: dash.Dash) -> None:
         queue_depths = {r["facility_name"]: r["queue_depth"] + r["processing_count"]
                         for r in queue_rows}
 
-        # Barge data (if exists)
-        barge = None
-        barge_rows = fetch_query("SELECT * FROM barges ORDER BY id LIMIT 1")
-        if barge_rows:
-            barge = barge_rows[0]
-
         return {
             "spmts": spmts,
             "cranes": cranes,
             "blocks": blocks,
             "queue_depths": queue_depths,
-            "barge": barge,
         }
-
-    # ── Quonset Map (standalone tab) ──
-    @app.callback(
-        Output("quonset-map", "figure"),
-        [Input("interval", "n_intervals"),
-         Input("map-health-toggle", "value"),
-         Input("map-layers", "value")],
-    )
-    def update_quonset_map(n, health_toggle, layers):
-        map_data = _fetch_map_state()
-        show_health = "on" in (health_toggle or [])
-        show_queues = "queues" in (layers or [])
-        return build_quonset_map(map_data, show_health=show_health, show_queues=show_queues)
-
-    # ── Groton Map (standalone tab) ──
-    @app.callback(
-        Output("groton-map", "figure"),
-        [Input("interval", "n_intervals"),
-         Input("map-health-toggle", "value"),
-         Input("map-layers", "value")],
-    )
-    def update_groton_map(n, health_toggle, layers):
-        map_data = _fetch_map_state()
-        show_health = "on" in (health_toggle or [])
-        show_queues = "queues" in (layers or [])
-        return build_groton_map(map_data, show_health=show_health, show_queues=show_queues)
 
 
     # ============================================================================
@@ -1423,56 +1386,6 @@ def register_callbacks(app: dash.Dash) -> None:
             return "Viewing: Live data (auto-refreshing)"
         else:
             return f"Viewing: Historical snapshot at simulation time {int(current_time)}"
-
-    # ── Modified Dual Maps Callback with Playback Support ──
-    @app.callback(
-        [Output("dual-quonset-map", "figure"),
-         Output("dual-groton-map", "figure"),
-         Output("transit-map", "figure")],
-        [Input("interval", "n_intervals"),
-         Input("dual-map-health-toggle", "value"),
-         Input("playback-state", "data"),
-         Input("playback-mode-toggle", "value"),
-         Input("playback-run-selector", "value")],
-    )
-    def update_dual_maps_with_playback(n, health_toggle, playback_state, playback_enabled, selected_run_id):
-        """Update dual maps with support for playback mode and historical run selection."""
-        show_health = "on" in (health_toggle or [])
-        playback_on = "on" in (playback_enabled or [])
-
-        # Determine which data source to use
-        if playback_on and playback_state and playback_state.get("time") is not None:
-            # Use historical data from selected run
-            run_id = selected_run_id if selected_run_id else None
-            map_data = fetch_position_at_time(playback_state["time"], run_id=run_id)
-        else:
-            # Use live data
-            map_data = _fetch_map_state()
-
-        quonset_fig = build_quonset_map(map_data, show_health=show_health, show_queues=True)
-        groton_fig = build_groton_map(map_data, show_health=show_health, show_queues=True)
-        transit_fig = build_transit_map(map_data.get("barge"))
-
-        # Adjust heights for split view
-        quonset_fig.update_layout(height=400, margin=dict(t=40, b=30, l=30, r=30))
-        groton_fig.update_layout(height=400, margin=dict(t=40, b=30, l=30, r=30))
-        transit_fig.update_layout(height=180, margin=dict(t=40, b=20, l=30, r=30))
-
-        # Add playback indicator if in historical mode
-        if playback_on and playback_state and playback_state.get("time") is not None:
-            historical_time = playback_state["time"]
-            for fig in [quonset_fig, groton_fig]:
-                fig.add_annotation(
-                    text=f"📼 t={int(historical_time)}",
-                    xref="paper", yref="paper",
-                    x=0.02, y=0.98,
-                    showarrow=False,
-                    font=dict(size=11, color="#e74c3c"),
-                    bgcolor="rgba(255,255,255,0.8)",
-                    borderpad=4,
-                )
-
-        return quonset_fig, groton_fig, transit_fig
 
     # ============================================================================
     # GNN GRAPH VISUALIZATION CALLBACKS

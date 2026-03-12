@@ -75,7 +75,6 @@ def init_db() -> None:
             due_date REAL,
             current_stage TEXT,
             completion_pct REAL DEFAULT 0,
-            yard TEXT DEFAULT 'quonset',
             super_module_id TEXT
         )
     """)
@@ -87,8 +86,7 @@ def init_db() -> None:
             load TEXT,
             health_hydraulic REAL,
             health_tires REAL,
-            health_engine REAL,
-            yard TEXT DEFAULT 'quonset'
+            health_engine REAL
         )
     """)
     cur.execute("""
@@ -97,18 +95,7 @@ def init_db() -> None:
             status TEXT,
             position_on_rail REAL,
             health_cable REAL,
-            health_motor REAL,
-            yard TEXT DEFAULT 'groton'
-        )
-    """)
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS barges (
-            id TEXT PRIMARY KEY,
-            status TEXT,
-            current_location TEXT,
-            cargo TEXT,
-            transit_progress REAL DEFAULT 0.0,
-            capacity INTEGER DEFAULT 2
+            health_motor REAL
         )
     """)
 
@@ -198,17 +185,6 @@ def init_db() -> None:
 
     cur.execute("CREATE INDEX IF NOT EXISTS idx_position_run ON position_history(run_id)")
 
-    # Barge tracking table (legacy, for dual-yard mode)
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS barges (
-            id TEXT PRIMARY KEY,
-            status TEXT,
-            current_location TEXT,
-            cargo TEXT,
-            transit_progress REAL,
-            capacity INTEGER
-        )
-    """)
 
     # ========================================================================
     # HHI ULSAN SHIPYARD TABLES
@@ -331,7 +307,7 @@ def clear_db() -> None:
     conn = _get_conn()
     tables = [
         "metrics", "blocks", "spmts", "cranes", "health_history",
-        "queue_history", "block_events", "ship_events", "position_history", "barges",
+        "queue_history", "block_events", "ship_events", "position_history",
         # HHI tables
         "ships", "goliath_cranes", "dry_docks", "outfitting_quays", "hhi_blocks"
     ]
@@ -478,49 +454,31 @@ def log_metrics(time: float, metrics: Dict[str, Any]) -> None:
     conn.close()
 
 
-def log_entities(blocks: list, spmts: list, cranes: list, barges: Optional[list] = None) -> None:
+def log_entities(blocks: list, spmts: list, cranes: list) -> None:
     conn = _get_conn()
     cur = conn.cursor()
     cur.execute("DELETE FROM blocks")
     cur.execute("DELETE FROM spmts")
     cur.execute("DELETE FROM cranes")
-    cur.execute("DELETE FROM barges")
     for b in blocks:
         stage = b.current_stage.name if hasattr(b.current_stage, 'name') else str(b.current_stage)
-        yard = getattr(b, 'yard', 'quonset') or 'quonset'
         super_module_id = getattr(b, 'super_module_id', None)
         cur.execute(
-            "INSERT INTO blocks (id, status, location, due_date, current_stage, completion_pct, yard, super_module_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (b.id, b.status.value, b.location, b.due_date, stage, getattr(b, 'completion_pct', 0.0), yard, super_module_id),
+            "INSERT INTO blocks (id, status, location, due_date, current_stage, completion_pct, super_module_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (b.id, b.status.value, b.location, b.due_date, stage, getattr(b, 'completion_pct', 0.0), super_module_id),
         )
     for s in spmts:
-        # HHI Ulsan: Single yard, no dual-yard inference needed
-        yard = getattr(s, 'yard', 'hhi_ulsan')
         cur.execute(
-            "INSERT INTO spmts (id, status, current_location, load, health_hydraulic, health_tires, health_engine, yard) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (s.id, s.status.value, s.current_location, s.current_load or "", s.health_hydraulic, s.health_tires, s.health_engine, yard),
+            "INSERT INTO spmts (id, status, current_location, load, health_hydraulic, health_tires, health_engine) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (s.id, s.status.value, s.current_location, s.current_load or "", s.health_hydraulic, s.health_tires, s.health_engine),
         )
     for c in cranes:
-        # HHI Ulsan: Single yard with Goliath cranes - use assigned_dock for location
-        yard = getattr(c, 'yard', 'hhi_ulsan')
-        # Handle both old Crane (cable/motor) and new GoliathCrane (hoist/trolley/gantry)
         health_1 = getattr(c, 'health_hoist', getattr(c, 'health_cable', 100))
         health_2 = getattr(c, 'health_trolley', getattr(c, 'health_motor', 100))
         cur.execute(
-            "INSERT INTO cranes (id, status, position_on_rail, health_cable, health_motor, yard) VALUES (?, ?, ?, ?, ?, ?)",
-            (c.id, c.status.value, c.position_on_rail, health_1, health_2, yard),
+            "INSERT INTO cranes (id, status, position_on_rail, health_cable, health_motor) VALUES (?, ?, ?, ?, ?)",
+            (c.id, c.status.value, c.position_on_rail, health_1, health_2),
         )
-    # Log barges if provided (dual-yard mode)
-    if barges:
-        import json
-        for barge in barges:
-            status = barge.status.value if hasattr(barge.status, 'value') else str(barge.status)
-            cargo = json.dumps(getattr(barge, 'cargo', []))
-            cur.execute(
-                "INSERT INTO barges (id, status, current_location, cargo, transit_progress, capacity) VALUES (?, ?, ?, ?, ?, ?)",
-                (barge.id, status, getattr(barge, 'current_location', ''), cargo,
-                 getattr(barge, 'transit_progress', 0.0), getattr(barge, 'capacity', 2)),
-            )
     conn.commit()
     conn.close()
 
@@ -533,11 +491,10 @@ def log_spmts(spmts: list) -> None:
     cur = conn.cursor()
     cur.execute("DELETE FROM spmts")
     for s in spmts:
-        yard = getattr(s, 'yard', 'hhi_ulsan')
         status = s.status.value if hasattr(s.status, 'value') else str(s.status)
         cur.execute(
-            "INSERT INTO spmts (id, status, current_location, load, health_hydraulic, health_tires, health_engine, yard) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (s.id, status, s.current_location, s.current_load or "", s.health_hydraulic, s.health_tires, s.health_engine, yard),
+            "INSERT INTO spmts (id, status, current_location, load, health_hydraulic, health_tires, health_engine) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (s.id, status, s.current_location, s.current_load or "", s.health_hydraulic, s.health_tires, s.health_engine),
         )
     conn.commit()
     conn.close()
@@ -689,7 +646,7 @@ def fetch_ship_events(ship_id: str | None = None) -> List[Dict[str, Any]]:
 # ============================================================================
 
 def log_position_snapshot(time: float, blocks: list, spmts: list, cranes: list,
-                          barge: Any = None, ships: list = None,
+                          ships: list = None,
                           run_id: int = None) -> None:
     """Log a complete position snapshot for playback.
 
@@ -706,8 +663,6 @@ def log_position_snapshot(time: float, blocks: list, spmts: list, cranes: list,
         List of SPMT entities
     cranes : list
         List of GoliathCrane entities
-    barge : Any, optional
-        Barge entity for dual-yard mode
     ships : list, optional
         List of LNGCarrier ships (for swim-away animation)
     run_id : int, optional
@@ -816,35 +771,6 @@ def log_position_snapshot(time: float, blocks: list, spmts: list, cranes: list,
             (time, yard, "crane", c.id, location, status, extra, run_id),
         )
 
-    # Log barge
-    if barge:
-        barge_location = getattr(barge, "current_location", "quonset_pier")
-        barge_status = barge.status.value if hasattr(barge, "status") and hasattr(barge.status, "value") else str(getattr(barge, "status", ""))
-
-        extra = json.dumps({
-            "cargo": getattr(barge, "cargo", []),
-            "transit_progress": getattr(barge, "transit_progress", 0),
-            "capacity": getattr(barge, "capacity", 2),
-        })
-
-        cur.execute(
-            "INSERT OR REPLACE INTO position_history (timestamp, yard, entity_type, entity_id, location, status, extra_data, run_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (time, "transit", "barge", barge.id, barge_location, barge_status, extra, run_id),
-        )
-
-        # Also update the barges table for current state
-        cur.execute(
-            "INSERT OR REPLACE INTO barges (id, status, current_location, cargo, transit_progress, capacity) VALUES (?, ?, ?, ?, ?, ?)",
-            (
-                barge.id,
-                barge_status,
-                barge_location,
-                json.dumps(getattr(barge, "cargo", [])),
-                getattr(barge, "transit_progress", 0),
-                getattr(barge, "capacity", 2),
-            ),
-        )
-
     conn.commit()
     conn.close()
 
@@ -878,10 +804,10 @@ def fetch_position_at_time(target_time: float, run_id: int = None) -> Dict[str, 
             )
     except Exception:
         # position_history table may not exist
-        return {"spmts": [], "cranes": [], "blocks": [], "ships": [], "queue_depths": {}, "barge": None}
+        return {"spmts": [], "cranes": [], "blocks": [], "ships": [], "queue_depths": {}}
 
     if not closest_ts or closest_ts[0]["ts"] is None:
-        return {"spmts": [], "cranes": [], "blocks": [], "ships": [], "queue_depths": {}, "barge": None}
+        return {"spmts": [], "cranes": [], "blocks": [], "ships": [], "queue_depths": {}}
 
     actual_time = closest_ts[0]["ts"]
 
@@ -900,7 +826,6 @@ def fetch_position_at_time(target_time: float, run_id: int = None) -> Dict[str, 
     cranes = []
     blocks = []
     ships = []
-    barge = None
 
     for r in rows:
         extra = json.loads(r.get("extra_data", "{}")) if r.get("extra_data") else {}
@@ -932,15 +857,6 @@ def fetch_position_at_time(target_time: float, run_id: int = None) -> Dict[str, 
                 "completion_pct": extra.get("completion_pct", 0),
                 "due_date": extra.get("due_date"),
             })
-        elif r["entity_type"] == "barge":
-            barge = {
-                "id": r["entity_id"],
-                "status": r["status"],
-                "current_location": r["location"],
-                "cargo": extra.get("cargo", []),
-                "transit_progress": extra.get("transit_progress", 0),
-                "capacity": extra.get("capacity", 2),
-            }
         elif r["entity_type"] == "ship":
             ships.append({
                 "id": r["entity_id"],
@@ -973,7 +889,6 @@ def fetch_position_at_time(target_time: float, run_id: int = None) -> Dict[str, 
         "blocks": blocks,
         "ships": ships,
         "queue_depths": queue_depths,
-        "barge": barge,
         "actual_time": actual_time,
     }
 

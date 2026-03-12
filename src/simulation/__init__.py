@@ -3,7 +3,7 @@
 Models HD Hyundai Heavy Industries (HHI) Ulsan shipyard for LNG carrier production.
 """
 
-from .shipyard import ShipyardGraph, HHIShipyardGraph, DualShipyardGraph, BargeRoute
+from .shipyard import ShipyardGraph, HHIShipyardGraph
 from .entities import (
     # Core entities
     Block,
@@ -34,17 +34,10 @@ from .entities import (
 from .degradation import WienerDegradationModel
 from .precedence import is_predecessor_complete
 
-# Backward compatibility aliases for old EB code
-Crane = GoliathCrane
-CraneStatus = GoliathCraneStatus
-ProductionStage = HHIProductionStage
-
 __all__ = [
     # Graphs
     "ShipyardGraph",
     "HHIShipyardGraph",
-    "DualShipyardGraph",
-    "BargeRoute",
     # HHI Entities
     "Block",
     "SPMT",
@@ -70,10 +63,6 @@ __all__ = [
     "PlateType",
     "DetailedProductionStage",
     "DETAILED_TO_HHI_STAGE",
-    # Backward compatibility aliases
-    "Crane",
-    "CraneStatus",
-    "ProductionStage",
     # Other
     "WienerDegradationModel",
     "is_predecessor_complete",

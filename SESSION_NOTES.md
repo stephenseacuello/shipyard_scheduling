@@ -70,6 +70,47 @@ ISE 572 Graduate Course Project — Reinforcement Learning for Shipyard Block Sc
   - HHI Ulsan (1600 blocks): still 0% — medium curriculum not sufficient for full scale
 - 157 tests passing after all changes
 
+### Session 5: NSRP Calibration & Dual-Yard Removal
+- Removed all Groton/Quonset/Electric Boat dual-yard code (11 files)
+- Integrated NSRP benchmarking data (OECD CGT, FMI/GSIBBS 2005)
+  - LNG carrier CGT: A=32, B=0.68 → CGT ≈ 77,500
+  - 16 man-hours/CGT → 1,240,000 total man-hours per ship
+  - Equipment-hours per block: 21–76 hours (man-hours / crew_size)
+- Extended simulation: 10,000 steps → 850 blocks, 4 ships delivered
+- Created `data/calibration/nsrp_benchmarks.yaml` with full NSRP data
+
+### Session 6: Plan Completion & Paper Update
+- **Phase 4 (Statistical Comparison):** Re-ran 10-seed comparison on small + medium configs
+- **Phase 5 (Dashboard Verification):** Verified all MES dashboard tabs render correctly
+- **Phase 6 (Benchmark Additional Configs):** Cross-config benchmarking on tiny + hhi_plate_decomposition
+- **Phase 8 (Paper & Results Update):**
+  - Updated RESULTS.md with NSRP calibration data and 10K-step extended simulation
+  - Added NSRP calibration section to paper/main.tex
+  - Updated extended simulation results (8K→10K steps, 3→4 ships)
+  - Added OECD/NSRP/Storch references to bibliography
+  - Updated LaTeX statistical comparison table
+
+### Session 7: DAgger Evaluation, Figures & Paper Polish
+- **DAgger Deployment Evaluation (5 seeds, small + medium):**
+  - Small: DAgger achieves **0.0623 throughput (118% of Expert)** — best of all agents
+  - Medium: 0% throughput — normalizer mismatch (RunningMeanStd not saved with checkpoint)
+  - Fixed `curriculum_dagger.py` to save normalizer state in future checkpoints
+- **Publication Figures (7 total):**
+  - Generated: shipyard_layout, curriculum_dagger, cross_config_comparison, calibration_r2
+  - New: entropy_collapse, method_comparison, scaling_analysis
+  - Updated cross_config_comparison to include DAgger
+  - Updated method_comparison to include deployed DAgger (118% of Expert)
+- **Paper Polish:**
+  - Added curriculum DAgger + scaling results to abstract
+  - Added scaling analysis figure (Fig. scaling_analysis) with 4 configs
+  - Added DAgger deployment paragraph with normalizer mismatch discussion
+  - Updated conclusions with scaling analysis and curriculum DAgger
+  - Updated cross-instance paragraph with HHI plate decomposition (1600 blocks)
+  - Replaced GitHub URL placeholder with publication note
+  - Paper compiles: 36 pages, no errors
+- **Updated:** RESULTS.md, LaTeX comparison table, SESSION_NOTES.md
+- 157 tests passing
+
 ---
 
 ## Key Findings

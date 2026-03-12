@@ -22,23 +22,12 @@ python -c "from mes.database import init_db; init_db()"
 
 ## 3. Run a Quick Training Session
 
-**Single-yard mode (legacy):**
 ```bash
 python experiments/train.py \
   --config config/small_instance.yaml \
   --epochs 3 \
   --steps 100 \
   --device cpu
-```
-
-**Dual-yard mode (Electric Boat):**
-```bash
-python experiments/train.py \
-  --config config/eb_dual_yard.yaml \
-  --epochs 3 \
-  --steps 100 \
-  --device cpu \
-  --dual-yard
 ```
 
 ## 4. Launch the Dashboard
@@ -53,9 +42,7 @@ Open http://localhost:8050 in your browser.
 
 | Tab | Description |
 |-----|-------------|
-| **Dual View** | Split-screen Quonset/Groton maps with barge transit |
-| **Quonset** | Detailed EB-Quonset Point facility map |
-| **Groton** | Detailed EB-Groton facility map |
+| **HHI Map** | HD Hyundai Heavy Industries Ulsan shipyard map |
 | **Dependencies** | Block precedence constraint graph |
 | **Graph** | GNN heterogeneous graph visualization |
 | **Overview** | KPI cards and trends |
@@ -70,8 +57,7 @@ Open http://localhost:8050 in your browser.
 ### GNN Graph Visualization
 1. Go to the **Graph** tab
 2. View the heterogeneous graph used by the GNN encoder
-3. Filter by yard (Quonset/Groton)
-4. Toggle edge types (transport, lift, precedence)
+3. Toggle edge types (transport, lift, precedence)
 5. Click nodes to see feature details
 
 ### Health Overlay

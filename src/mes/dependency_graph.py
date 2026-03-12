@@ -200,8 +200,6 @@ def build_dependency_graph(
         "at_staging": "#7f8c8d",
         "at_pre_erection": COLORS["purple"],
         "placed_on_dock": COLORS["success"],
-        "on_barge": COLORS["teal"],
-        "awaiting_barge": COLORS["orange"],
     }
 
     # Draw nodes by status

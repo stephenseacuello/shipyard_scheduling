@@ -705,21 +705,3 @@ def build_equipment_health_summary(map_data: Dict[str, Any]) -> go.Figure:
     )
 
     return fig
-
-
-# Compatibility stubs for EB dual-yard callbacks (redirects to HHI map)
-def build_quonset_map(map_data: Dict[str, Any], show_health: bool = False,
-                      show_queues: bool = True) -> go.Figure:
-    """Stub for Quonset map - redirects to HHI map."""
-    return build_hhi_map(map_data, show_health=show_health, show_queues=show_queues)
-
-
-def build_groton_map(map_data: Dict[str, Any], show_health: bool = False,
-                     show_queues: bool = True) -> go.Figure:
-    """Stub for Groton map - redirects to HHI map."""
-    return build_hhi_map(map_data, show_health=show_health, show_queues=show_queues)
-
-
-def build_transit_map(barge_data: Optional[Dict[str, Any]] = None) -> go.Figure:
-    """Stub for transit map - returns empty figure."""
-    return _empty_map("Transit view not available for HHI shipyard")

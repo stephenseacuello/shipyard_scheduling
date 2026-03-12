@@ -1,0 +1,234 @@
+# NSRP (National Shipbuilding Research Program) Benchmarking Data
+# Sources:
+#   - OECD CGT coefficients: C/WP6(2006)7, effective 1 Jan 2007
+#   - FMI/GSIBBS Report: "Global Shipbuilding Industrial Base Benchmarking Study" (2005)
+#     https://www.nsrp.org/wp-content/uploads/2024/07/FMI-Global_Industrial_Benchmarking-major_yards-Navy-rpt.pdf
+#   - NSRP First Benchmarking: FMI/KPMG for NSRP ASE (Jan 2001)
+#     https://www.nsrp.org/wp-content/uploads/2024/07/FMI-First_Benchmarking.pdf
+#   - Stage breakdown: Storch et al. (1995) "Ship Production" 2nd Ed.
+#   - Korean yard productivity: Lamb (2004) "Ship Design and Construction" Ch.4
+#   - Learning curve: OECD CGT document, y = -0.1483*ln(x) + 0.9995 (R²=0.972)
+#
+# All figures are for a 174,000 cbm membrane-type LNG carrier
+# Built at a Korean mega-yard (HHI/DSME/Samsung class)
+
+# ============================================================================
+# VESSEL PARAMETERS
+# ============================================================================
+vessel:
+  type: "LNG Carrier (membrane)"
+  capacity_cbm: 174000
+  gross_tonnage: 95000       # GT, typical for 174k cbm
+  lightweight_tons: 42000    # LWT
+  steel_weight_tons: 28000   # Hull steel only
+  outfitting_weight_tons: 14000
+  length_m: 295
+  beam_m: 46
+  blocks_per_ship: 200
+
+# OECD CGT (Compensated Gross Tonnage) calculation
+# CGT = A × GT^B
+# LNG carriers: A=32, B=0.68 (OECD C/WP6(2006)7, Table 1)
+# CGT = 32 × 95000^0.68 ≈ 77,500 CGT
+# Note: A=48, B=0.57 is for OIL TANKERS, not LNG carriers
+cgt:
+  coefficient_A: 32
+  coefficient_B: 0.68
+  computed_cgt: 77500
+
+# ============================================================================
+# TOTAL MAN-HOURS BENCHMARK
+# ============================================================================
+# International productivity benchmarks (GSIBBS 2005, FMI First Benchmarking 2001):
+#   Japan (1999): 10-15 man-hours/CGT (best practice ~4.5)
+#   South Korea (1999): ~24 man-hours/CGT (best practice ~4.0)
+#   Europe average (2000): ~30 man-hours/CGT
+#   U.S. core productivity (2005): 30-60 man-hours/CGT
+#
+# Korean mega-yards have improved significantly since 1999.
+# Modern HHI/DSME/Samsung: estimated 15-18 man-hours/CGT
+# We use 16 man-hours/CGT for HHI Ulsan (conservative modern estimate)
+# Total = 16 × 77,500 = 1,240,000 man-hours per ship
+#
+# Note: This is high but consistent with LNG carrier complexity.
+# LNG carriers have CGT ~77,500 vs ~33,000 for a same-GT oil tanker,
+# reflecting 2.3× more work content (cargo containment, insulation, etc.)
+#
+# For simulation, we normalize to equipment-hours per block (man-hours / crew_size)
+# which gives processing times in the 20-80 hour range per block per stage.
+
+total_manhours_per_cgt: 16.0
+total_manhours_per_ship: 1240000
+
+# ============================================================================
+# STAGE-LEVEL BREAKDOWN (% of total man-hours)
+# Source: Storch et al. (1995), validated against NSRP SP-7 data
+# Adjusted for LNG carrier complexity (more outfitting, insulation)
+# ============================================================================
+
+stage_breakdown:
+  # Note: Equipment-hours per block = manhours_per_block / crew_size
+  # These equipment-hours are what the simulation uses as processing_time_mean
+  # The config uses values that produce realistic throughput at HHI's scale
+
+  STEEL_CUTTING:
+    pct_of_total: 5.0
+    manhours_per_ship: 62000
+    manhours_per_block: 310        # 62000 / 200 blocks
+    hours_per_block_8crew: 38.8    # 310 / 8 workers
+    # Config uses 21.2 (scaled for sim throughput)
+    description: "NC cutting, marking, edge prep"
+
+  PART_FABRICATION:
+    pct_of_total: 8.0
+    manhours_per_ship: 99200
+    manhours_per_block: 496
+    hours_per_block_10crew: 49.6
+    # Config uses 33.9 (scaled for sim throughput)
+    description: "Bending, forming, stiffener attachment"
+
+  PANEL_ASSEMBLY:
+    pct_of_total: 12.0
+    manhours_per_ship: 148800
+    manhours_per_block: 744
+    hours_per_block_12crew: 62.0
+    # Config uses 50.9 (scaled for sim throughput)
+    description: "Flat panel welding, sub-assembly"
+
+  BLOCK_ASSEMBLY:
+    pct_of_total: 18.0
+    manhours_per_ship: 223200
+    manhours_per_block: 1116
+    hours_per_block_16crew: 69.8
+    # Config uses 76.3 (scaled for sim throughput)
+    description: "3D block construction, major welding"
+
+  BLOCK_OUTFITTING:
+    pct_of_total: 15.0
+    manhours_per_ship: 186000
+    manhours_per_block: 930
+    hours_per_block_14crew: 66.4
+    # Config uses 63.6 (scaled for sim throughput)
+    description: "Piping, HVAC, electrical, insulation pre-erection"
+
+  PAINTING:
+    pct_of_total: 7.0
+    manhours_per_ship: 86800
+    manhours_per_block: 434
+    hours_per_block_8crew: 54.3
+    # Config uses 29.7 (scaled for sim throughput)
+    description: "Surface prep, primer, anti-corrosion, topcoat"
+
+  PRE_ERECTION:
+    pct_of_total: 10.0
+    manhours_per_ship: 124000
+    manhours_per_block: 620
+    hours_per_block_10crew: 62.0
+    # Config uses 42.4 (scaled for sim throughput)
+    description: "Grand block joining, staging, final inspection"
+
+  ERECTION:
+    pct_of_total: 12.0
+    manhours_per_ship: 148800
+    manhours_per_block: 744
+    hours_per_block_20crew: 37.2
+    description: "Crane lifts, fit-up, welding in dock"
+
+  QUAY_OUTFITTING:
+    pct_of_total: 10.0
+    manhours_per_ship: 124000
+    # Per-ship, not per-block (happens after launch)
+    hours_per_ship_50crew: 2480.0
+    description: "Post-launch systems, cargo containment, commissioning"
+
+  SEA_TRIALS:
+    pct_of_total: 3.0
+    manhours_per_ship: 37200
+    hours_duration: 72           # Typical 3-day trials
+    description: "Speed trials, gas trials, systems testing"
+
+# ============================================================================
+# PROCESSING TIME MULTIPLIERS BY BLOCK TYPE
+# Source: Roh & Lee (2007), Lee et al. (2012), industry practice
+# Base = flat_bottom block. Multiplier applied to stage hours.
+# ============================================================================
+
+block_type_multipliers:
+  flat_bottom: 1.00     # Reference (double bottom)
+  flat_side: 0.95       # Slightly simpler than bottom
+  deck: 0.90            # Fewer structural members
+  cargo_tank_support: 1.25  # Complex insulation interface
+  engine_room: 1.40     # Dense piping, heavy machinery
+  curved_bow: 1.50      # Compound curves, lofting
+  curved_stern: 1.45    # Compound curves, propulsion interface
+  accommodation: 1.15   # Dense outfitting, many systems
+
+# ============================================================================
+# CREW SIZES BY STAGE (typical Korean mega-yard)
+# Source: Industry practice, Park et al. (2007), Shin et al. (2008)
+# ============================================================================
+
+crew_sizes:
+  STEEL_CUTTING: 8       # CNC operators + material handlers
+  PART_FABRICATION: 10   # Welders + fitters + quality
+  PANEL_ASSEMBLY: 12     # Large team for panel jigs
+  BLOCK_ASSEMBLY: 16     # Largest team - multiple trades
+  BLOCK_OUTFITTING: 14   # Electricians, pipefitters, insulators
+  PAINTING: 8            # Painters + surface prep
+  PRE_ERECTION: 10       # Crane riggers + welders
+  ERECTION: 20           # Crane crew + welders + surveyors
+  QUAY_OUTFITTING: 50    # All trades for final commissioning
+
+# ============================================================================
+# LEARNING CURVE PARAMETERS
+# Source: NSRP SP-7, Wright learning curve model
+# Korean yards: 85-90% learning curve (experienced workforce)
+# ============================================================================
+
+learning_curve:
+  # OECD series learning curve: y = -0.1483*ln(x) + 0.9995 (R²=0.972)
+  # Ship 1=1.0, Ship 2=0.90, Ship 5=0.76, Ship 10=0.66
+  rate: 0.88             # 88% learning curve (12% improvement per doubling)
+  first_unit_multiplier: 1.3  # First ship takes 30% longer than steady-state
+  steady_state_ship: 4   # Reach steady-state by 4th ship in series
+
+# ============================================================================
+# INTERNATIONAL PRODUCTIVITY COMPARISON (GSIBBS/FMI 2005)
+# Source: NSRP Global Shipbuilding Industrial Base Benchmarking Study
+# ============================================================================
+
+international_comparison:
+  # Man-hours per CGT by country/year
+  japan_1992: 20
+  japan_1999: 12        # World-leading
+  south_korea_1992: 45
+  south_korea_1999: 24
+  europe_average_2000: 30
+  us_core_2005: 45      # Best achievable with current facilities
+  us_actual_2005: 65    # Includes overhead, rework, inefficiency
+  us_actual_core_gap: "20-50%"  # Gap between actual and core productivity
+
+  # First-of-class performance
+  commercial_dropoff: 0.10   # 10% productivity loss on first ship
+  naval_dropoff: 0.60        # Up to 60% loss for first naval vessel
+  naval_core_ship: 8         # Reach core productivity by 8th-10th vessel
+
+# ============================================================================
+# OECD CGT COEFFICIENTS TABLE (C/WP6(2006)7, effective 1 Jan 2007)
+# CGT = A × GT^B
+# ============================================================================
+
+oecd_cgt_table:
+  oil_tankers:      {A: 48, B: 0.57}
+  chemical_tankers: {A: 84, B: 0.55}
+  bulk_carriers:    {A: 29, B: 0.61}
+  general_cargo:    {A: 27, B: 0.64}
+  container_ships:  {A: 19, B: 0.68}
+  lng_carriers:     {A: 32, B: 0.68}
+  lpg_carriers:     {A: 62, B: 0.57}
+  passenger_ships:  {A: 49, B: 0.67}
+  ferries:          {A: 20, B: 0.71}
+  ro_ro_vessels:    {A: 32, B: 0.63}
+  car_carriers:     {A: 15, B: 0.70}
+  fishing_vessels:  {A: 24, B: 0.71}
+  nccv:             {A: 46, B: 0.62}  # Non-cargo carrying vessels

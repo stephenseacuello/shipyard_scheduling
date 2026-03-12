@@ -20,7 +20,7 @@ The Shipyard Scheduling System is a reinforcement learning framework for optimiz
 
 ### Key Capabilities
 
-- **Dual-Yard Workflow**: Models Electric Boat's Quonset Point (RI) to Groton (CT) submarine production pipeline
+- **HHI Ulsan Shipyard**: Models HD Hyundai Heavy Industries LNG carrier production with 10 dry docks, 9 Goliath cranes
 - **Health-Aware Scheduling**: Integrates equipment degradation models for predictive maintenance
 - **Interactive Visualization**: Real-time dashboard with shipyard maps, dependency graphs, and playback
 - **Flexible Training**: Supports curriculum learning, hyperparameter search, and baseline comparisons
@@ -39,10 +39,10 @@ The Shipyard Scheduling System is a reinforcement learning framework for optimiz
 │  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐ │
 │  │   SIMULATION    │    │      AGENT      │    │    DASHBOARD    │ │
 │  │                 │    │                 │    │                 │ │
-│  │ • ShipyardEnv   │◄──►│ • GNN Encoder   │    │ • Dash App      │ │
-│  │ • DualShipyardEnv│   │ • Actor-Critic  │    │ • Plotly Maps   │ │
-│  │ • Entities      │    │ • PPO Trainer   │    │ • Real-time     │ │
-│  │ • Degradation   │    │ • Action Mask   │    │ • Playback      │ │
+│  │ • HHIShipyardEnv│◄──►│ • GNN Encoder   │    │ • Dash App      │ │
+│  │ • Entities      │    │ • Actor-Critic  │    │ • Plotly Maps   │ │
+│  │ • Degradation   │    │ • PPO Trainer   │    │ • Real-time     │ │
+│  │ • Calibration   │    │ • Action Mask   │    │ • Playback      │ │
 │  └────────┬────────┘    └─────────────────┘    └────────┬────────┘ │
 │           │                                             │          │
 │           ▼                                             ▼          │
@@ -53,26 +53,12 @@ The Shipyard Scheduling System is a reinforcement learning framework for optimiz
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### Dual-Yard Workflow
-
-The Electric Boat dual-yard workflow models submarine production across two facilities:
+### HHI Ulsan Production Flow
 
 ```
-QUONSET POINT (RI)                    GROTON (CT)
-─────────────────                     ────────────
-Steel Processing                      Barge Unloading
-       ↓                                    ↓
-Cylinder Fabrication                  Land-Level Construction
-       ↓                                    ↓
-Module Outfitting (Bldg 9)           Building 600 Systems
-       ↓                                    ↓
-Super-Module Assembly                 Graving Dock Float-Off
-       ↓
-Barge Loading
-       ↓
-═══════════════════════════════════════════════════════════
-       HOLLAND BARGE TRANSIT (~36 hours)
-═══════════════════════════════════════════════════════════
+STEEL CUTTING → PART FABRICATION → PANEL ASSEMBLY → BLOCK ASSEMBLY
+       → BLOCK OUTFITTING → PAINTING → PRE-ERECTION
+       → ERECTION (Dry Dock) → QUAY OUTFITTING → SEA TRIALS → DELIVERY
 ```
 
 ---
@@ -205,46 +191,6 @@ python experiments/live_simulation.py \
     --max-steps 5000
 ```
 
-### Dual-Yard Environment (`DualShipyardEnv`)
-
-Extended environment for Electric Boat dual-yard operations:
-
-```python
-from simulation import DualShipyardEnv
-
-config = {
-    "n_blocks": 20,
-    "n_super_modules": 6,
-    "n_quonset_spmts": 4,
-    "n_groton_spmts": 3,
-    "n_quonset_cranes": 2,
-    "n_groton_cranes": 2,
-    "n_barges": 1,
-    "dual_yard": {
-        "quonset": {...},
-        "groton": {...},
-        "transport": {
-            "transit_time_hours": 36.0,
-            "return_time_hours": 30.0,
-            "barge_capacity": 2,
-        }
-    }
-}
-
-env = DualShipyardEnv(config)
-env.db_logging_enabled = True  # Enable dashboard integration
-```
-
-**Extended Action Types:**
-| Type | Description |
-|------|-------------|
-| 0 | Dispatch SPMT (yard-specific) |
-| 1 | Dispatch crane (yard-specific) |
-| 2 | Trigger maintenance |
-| 3 | Hold |
-| 4 | Load barge / Start barge transit |
-| 5 | Unload barge |
-
 ### Entity Classes
 
 **Block:**
@@ -274,17 +220,6 @@ class SPMT:
     health_engine: float
 ```
 
-**Barge (Dual-Yard only):**
-```python
-@dataclass
-class Barge:
-    id: str
-    capacity: int = 2          # Super modules per trip
-    current_location: str      # "quonset_pier" or "groton_pier"
-    status: BargeStatus
-    cargo: List[str]           # Module IDs currently loaded
-    transit_progress: float    # 0.0 to transit_time
-```
 
 ### Production Stages
 
@@ -308,8 +243,8 @@ Access at: http://localhost:8050
 
 ### Tab Reference
 
-#### Dual View (Default)
-Split-screen showing both shipyards with barge transit visualization.
+#### HHI Map (Default)
+Interactive map of HD Hyundai Heavy Industries Ulsan shipyard showing all production zones, equipment, and block positions.
 
 **Controls:**
 - **Health Overlay**: Toggle to color equipment by health status
@@ -318,25 +253,7 @@ Split-screen showing both shipyards with barge transit visualization.
 **Map Elements:**
 - Colored rectangles: Facilities with queue indicators
 - Diamond markers: SPMTs
-- Triangle markers: Cranes
-- Square marker: Holland barge
-
-#### Quonset Map
-Detailed view of EB-Quonset Point (RI) facilities:
-- Steel Processing
-- AFC Facility (Automated Fiber Composite)
-- Building 9A/9B/9C (Module Outfitting)
-- Super-Module Assembly Area
-- Pier (Barge Loading)
-
-#### Groton Map
-Detailed view of EB-Groton (CT) facilities:
-- Pier (Barge Unloading)
-- Land-Level Construction Area
-- Building 600 (Systems Integration)
-- Graving Dock (Float-Off)
-- Crane Rail with positioned cranes
-- Dock Grid showing block placement positions
+- Triangle markers: Goliath cranes
 
 #### Dependencies
 Interactive block dependency graph:
@@ -399,16 +316,6 @@ python experiments/train.py \
   --save data/checkpoints/
 ```
 
-**Dual-yard training:**
-```bash
-python experiments/train.py \
-  --config config/eb_dual_yard.yaml \
-  --epochs 15 \
-  --steps 300 \
-  --dual-yard \
-  --save data/checkpoints/
-```
-
 ### Evaluation Commands
 
 **Evaluate trained agent:**
@@ -454,7 +361,6 @@ python experiments/hyperparameter_search.py \
 | `small_instance.yaml` | 50 | 6 | 2 | 5,000 |
 | `medium_instance.yaml` | 150 | 9 | 3 | 15,000 |
 | `large_instance.yaml` | 300 | 12 | 4 | 30,000 |
-| `eb_dual_yard.yaml` | 20 | 7 (4+3) | 4 (2+2) | 20,000 |
 
 ### Key Configuration Parameters
 
@@ -484,31 +390,6 @@ ppo:
   clip_epsilon: 0.2
   gae_lambda: 0.95
   entropy_coef: 0.01
-```
-
-### Dual-Yard Configuration
-
-```yaml
-dual_yard:
-  quonset:
-    facilities:
-      - name: steel_processing
-        processing_time_mean: 16.0
-        processing_time_std: 4.0
-        capacity: 4
-      # ... more facilities
-  groton:
-    facilities:
-      - name: groton_pier
-        processing_time_mean: 4.0
-        capacity: 2
-      # ... more facilities
-  transport:
-    origin_pier: quonset_pier
-    destination_pier: groton_pier
-    transit_time_hours: 36.0
-    return_time_hours: 30.0
-    barge_capacity: 2
 ```
 
 ---
@@ -618,5 +499,5 @@ Add new tabs by modifying:
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 2.0.0 | 2025 | Added dual-yard environment, playback, dependency graphs |
+| 2.0.0 | 2025 | Added HHI Ulsan shipyard model, playback, dependency graphs |
 | 1.0.0 | 2024 | Initial release with single-yard scheduling |

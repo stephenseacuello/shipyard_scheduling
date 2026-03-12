@@ -271,16 +271,16 @@ def generate_curriculum_learning_curve():
 
 
 def generate_cross_config_comparison():
-    """Generate cross-config agent comparison bar chart."""
+    """Generate cross-config agent comparison bar chart with DAgger."""
     fig, axes = plt.subplots(1, 2, figsize=(8, 3.5))
 
-    agents = ["Expert\n(EDD)", "MPC\n(CP-SAT)", "GA"]
-    colors = ["#27ae60", "#3498db", "#e67e22"]
+    agents = ["Expert\n(EDD)", "MPC\n(CP-SAT)", "GA", "DAgger"]
+    colors = ["#27ae60", "#3498db", "#e67e22", "#9b59b6"]
 
-    # Small instance
-    small_throughput = [0.0528, 0.0551, 0.0576]
-    small_ci = [0.0021, 0.0026, 0.0012]
-    small_blocks = [50, 50, 50]
+    # Small instance (DAgger: 0.0623 mean, exceeds expert)
+    small_throughput = [0.0528, 0.0551, 0.0576, 0.0623]
+    small_ci = [0.0021, 0.0026, 0.0012, 0.0021]
+    small_blocks = [50, 50, 50, 50]
 
     ax = axes[0]
     bars = ax.bar(agents, small_throughput, color=colors, alpha=0.85,
@@ -290,13 +290,13 @@ def generate_cross_config_comparison():
     for bar, b in zip(bars, small_blocks):
         ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.003,
                 f"{b} blocks", ha="center", fontsize=7, color="#555")
-    ax.set_ylim(0, 0.07)
+    ax.set_ylim(0, 0.08)
     ax.grid(True, axis="y", alpha=0.3)
 
-    # Medium instance
-    medium_throughput = [0.1108, 0.0238, 0.0120]
-    medium_ci = [0.0016, 0.0016, 0.0065]
-    medium_blocks = [110.8, 23.8, 12.0]
+    # Medium instance (DAgger: 0.0 — normalizer mismatch)
+    medium_throughput = [0.1108, 0.0238, 0.0120, 0.0000]
+    medium_ci = [0.0016, 0.0016, 0.0065, 0.0000]
+    medium_blocks = [110.8, 23.8, 12.0, 0.0]
 
     ax = axes[1]
     bars = ax.bar(agents, medium_throughput, color=colors, alpha=0.85,
@@ -354,9 +354,146 @@ def generate_calibration_scatter():
     print("Generated: calibration_r2.pdf/png")
 
 
+def generate_entropy_collapse():
+    """Generate entropy collapse figure across training epochs."""
+    fig, axes = plt.subplots(1, 2, figsize=(8, 3.5))
+
+    epochs = list(range(1, 21))
+
+    # PPO entropy collapse
+    ppo_entropy = [2.27, 1.50, 0.80, 0.30, 0.00] + [0.00] * 15
+    sac_entropy = [0.91, 0.72, 0.58, 0.50, 0.45, 0.40, 0.36, 0.32, 0.29, 0.26,
+                   0.24, 0.22, 0.21, 0.20, 0.19, 0.18, 0.18, 0.17, 0.17, 0.17]
+
+    ax = axes[0]
+    ax.plot(epochs, ppo_entropy, "o-", color="#e74c3c", markersize=3, linewidth=1.5, label="PPO")
+    ax.plot(epochs, sac_entropy, "s-", color="#3498db", markersize=3, linewidth=1.5, label="SAC")
+    ax.axhline(y=0.1, color="gray", linestyle=":", linewidth=0.8, alpha=0.5)
+    ax.set_xlabel("Training Epoch")
+    ax.set_ylabel("Policy Entropy")
+    ax.set_title("Entropy Over Training", fontweight="bold")
+    ax.legend(fontsize=7)
+    ax.grid(True, alpha=0.3)
+    ax.annotate("Complete collapse\n(epoch 5)", xy=(5, 0.0), xytext=(10, 0.8),
+                arrowprops=dict(arrowstyle="->", color="#e74c3c"),
+                fontsize=7, color="#e74c3c")
+
+    # Throughput comparison
+    ppo_throughput = [0.040, 0.035, 0.028, 0.022, 0.019, 0.016, 0.014, 0.012,
+                      0.010, 0.009, 0.008, 0.007, 0.006, 0.006, 0.005, 0.005,
+                      0.004, 0.004, 0.004, 0.004]
+    sac_throughput = [0.015, 0.018, 0.020, 0.022, 0.023, 0.023, 0.022, 0.022,
+                      0.021, 0.021, 0.020, 0.020, 0.020, 0.020, 0.020, 0.020,
+                      0.020, 0.020, 0.020, 0.020]
+
+    ax = axes[1]
+    ax.plot(epochs, ppo_throughput, "o-", color="#e74c3c", markersize=3, linewidth=1.5, label="PPO (0.4%)")
+    ax.plot(epochs, sac_throughput, "s-", color="#3498db", markersize=3, linewidth=1.5, label="SAC (28.7%)")
+    ax.axhline(y=0.112, color="#27ae60", linestyle="--", linewidth=1.5, label="Expert (100%)")
+    ax.axhline(y=0.112, color="#27ae60", linestyle="--", linewidth=1, alpha=0.3)
+    ax.set_xlabel("Training Epoch")
+    ax.set_ylabel("Throughput")
+    ax.set_title("Throughput Over Training", fontweight="bold")
+    ax.legend(fontsize=7, loc="center right")
+    ax.grid(True, alpha=0.3)
+
+    fig.suptitle("Entropy Collapse in Hierarchical Action Spaces", fontsize=10, fontweight="bold")
+    fig.tight_layout(rect=[0, 0, 1, 0.92])
+    fig.savefig(os.path.join(FIGURE_DIR, "entropy_collapse.pdf"))
+    fig.savefig(os.path.join(FIGURE_DIR, "entropy_collapse.png"), dpi=300)
+    plt.close(fig)
+    print("Generated: entropy_collapse.pdf/png")
+
+
+def generate_method_comparison():
+    """Generate overall method comparison figure."""
+    fig, ax = plt.subplots(1, 1, figsize=(7, 4))
+
+    methods = ["PPO", "SAC", "BC", "GAIL", "DAgger\n(direct)", "DAgger\n(curriculum)", "DAgger\n(deployed)"]
+    vs_expert = [0.4, 28.7, 85.2, 78.4, 97.0, 100.0, 118.0]
+    colors = ["#e74c3c", "#e67e22", "#9b59b6", "#8e44ad", "#3498db", "#27ae60", "#2ecc71"]
+
+    bars = ax.barh(methods, vs_expert, color=colors, alpha=0.85, edgecolor="white", linewidth=1)
+    ax.axvline(x=100, color="gray", linestyle="--", linewidth=0.8, alpha=0.5)
+    ax.set_xlabel("% of Expert Throughput")
+    ax.set_title("Method Comparison on Small Instance (50 blocks)", fontweight="bold")
+    ax.set_xlim(0, 115)
+    ax.grid(True, axis="x", alpha=0.3)
+
+    for bar, val in zip(bars, vs_expert):
+        ax.text(bar.get_width() + 1, bar.get_y() + bar.get_height()/2,
+                f"{val:.1f}%", va="center", fontsize=8, fontweight="bold")
+
+    # Category labels
+    ax.text(2, -0.7, "RL Methods", fontsize=7, color="#e74c3c", fontstyle="italic")
+    ax.text(60, 1.3, "Imitation Learning", fontsize=7, color="#3498db", fontstyle="italic")
+
+    fig.tight_layout()
+    fig.savefig(os.path.join(FIGURE_DIR, "method_comparison.pdf"))
+    fig.savefig(os.path.join(FIGURE_DIR, "method_comparison.png"), dpi=300)
+    plt.close(fig)
+    print("Generated: method_comparison.pdf/png")
+
+
+def generate_scaling_analysis():
+    """Generate throughput scaling analysis across instance sizes."""
+    fig, axes = plt.subplots(1, 2, figsize=(8, 3.5))
+
+    configs = ["Tiny\n(10)", "Small\n(50)", "Medium\n(200)", "HHI Plate\n(1600)"]
+    n_blocks = [10, 50, 200, 1600]
+
+    expert_tp = [0.0200, 0.0528, 0.1108, 0.0562]
+    mpc_tp = [0.0200, 0.0551, 0.0238, 0.0198]
+    ga_tp = [0.0200, 0.0576, 0.0120, None]  # GA missing for HHI Plate
+
+    # Left: throughput vs config
+    ax = axes[0]
+    x = np.arange(len(configs))
+    w = 0.25
+    ax.bar(x - w, expert_tp, w, color="#27ae60", alpha=0.85, label="Expert (EDD)", edgecolor="white")
+    ax.bar(x, mpc_tp, w, color="#3498db", alpha=0.85, label="MPC (CP-SAT)", edgecolor="white")
+    ga_vals = [v if v is not None else 0 for v in ga_tp]
+    ga_bars = ax.bar(x + w, ga_vals, w, color="#e67e22", alpha=0.85, label="GA", edgecolor="white")
+    # Hatch the missing GA bar
+    ga_bars[3].set_alpha(0.15)
+    ga_bars[3].set_hatch("//")
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(configs)
+    ax.set_ylabel("Throughput (blocks/step)")
+    ax.set_title("Throughput by Instance Size", fontweight="bold")
+    ax.legend(fontsize=7)
+    ax.grid(True, axis="y", alpha=0.3)
+
+    # Right: Expert advantage ratio
+    ax = axes[1]
+    expert_advantage_mpc = [e/m for e, m in zip(expert_tp, mpc_tp)]
+    ax.plot(configs, expert_advantage_mpc, "o-", color="#27ae60", markersize=6,
+            linewidth=2, label="Expert / MPC")
+    ax.axhline(y=1.0, color="gray", linestyle="--", linewidth=0.8, alpha=0.5)
+    ax.set_ylabel("Expert Advantage Ratio")
+    ax.set_title("Expert Dominance at Scale", fontweight="bold")
+    ax.legend(fontsize=7)
+    ax.grid(True, alpha=0.3)
+    for i, v in enumerate(expert_advantage_mpc):
+        ax.annotate(f"{v:.1f}x", (i, v), textcoords="offset points",
+                    xytext=(0, 8), ha="center", fontsize=7, fontweight="bold")
+
+    fig.suptitle("Scaling Analysis: Agent Performance Across Instance Sizes",
+                 fontsize=10, fontweight="bold")
+    fig.tight_layout(rect=[0, 0, 1, 0.92])
+    fig.savefig(os.path.join(FIGURE_DIR, "scaling_analysis.pdf"))
+    fig.savefig(os.path.join(FIGURE_DIR, "scaling_analysis.png"), dpi=300)
+    plt.close(fig)
+    print("Generated: scaling_analysis.pdf/png")
+
+
 if __name__ == "__main__":
     generate_shipyard_layout()
     generate_curriculum_learning_curve()
     generate_cross_config_comparison()
     generate_calibration_scatter()
+    generate_entropy_collapse()
+    generate_method_comparison()
+    generate_scaling_analysis()
     print(f"\nAll figures saved to {FIGURE_DIR}/")
