@@ -16,6 +16,60 @@ from typing import Dict, Any, Tuple
 from .action_masking import head_relevance_mask, ALL_HEADS
 
 
+class AttentionActionHead(nn.Module):
+    """Attention-based action head for variable-size entity selection.
+
+    Instead of a fixed-size linear layer, this head uses cross-attention
+    between the state embedding (query) and per-entity embeddings (keys/values).
+    This scales naturally to any number of entities without retraining.
+
+    Used for request_head and lift_head where the number of valid targets
+    varies across instances (10 to 1600 blocks).
+    """
+
+    def __init__(self, state_dim: int, entity_dim: int, n_heads: int = 4) -> None:
+        super().__init__()
+        self.query_proj = nn.Linear(state_dim, entity_dim)
+        self.key_proj = nn.Linear(entity_dim, entity_dim)
+        self.scale = entity_dim ** 0.5
+        self.n_heads = n_heads
+
+    def forward(
+        self, state: torch.Tensor, entity_embeddings: torch.Tensor | None = None
+    ) -> torch.Tensor:
+        """Compute attention scores over entities.
+
+        Args:
+            state: (batch, state_dim) or (state_dim,) state embedding
+            entity_embeddings: (batch, n_entities, entity_dim) or None.
+                If None, falls back to learned linear projection (no attention).
+
+        Returns:
+            logits: (batch, n_entities) attention scores as action logits
+        """
+        if entity_embeddings is None:
+            # Fallback: no entity embeddings available, use linear projection
+            # This maintains backward compatibility with existing code
+            return self._fallback(state)
+
+        query = self.query_proj(state)  # (batch, entity_dim) or (entity_dim,)
+        keys = self.key_proj(entity_embeddings)  # (batch, n, entity_dim)
+
+        if query.dim() == 1:
+            query = query.unsqueeze(0)  # (1, entity_dim)
+        if keys.dim() == 2:
+            keys = keys.unsqueeze(0)  # (1, n, entity_dim)
+
+        # Scaled dot-product attention scores
+        # query: (batch, 1, entity_dim) @ keys: (batch, entity_dim, n) → (batch, 1, n)
+        logits = torch.bmm(query.unsqueeze(1), keys.transpose(1, 2)).squeeze(1)
+        return logits / self.scale
+
+    def _fallback(self, state: torch.Tensor) -> torch.Tensor:
+        """Linear fallback when entity embeddings are unavailable."""
+        return self.query_proj(state)
+
+
 def _apply_mask(logits: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
     """Mask logits: set positions where mask is False to a large negative value.
 
@@ -45,6 +99,7 @@ class ActorCriticPolicy(nn.Module):
         n_suppliers: int = 0,
         n_inventory: int = 0,
         n_labor_pools: int = 0,
+        entity_dim: int = 64,  # Embedding dim for attention-based heads
     ) -> None:
         super().__init__()
         self.n_action_types = n_action_types
@@ -67,6 +122,12 @@ class ActorCriticPolicy(nn.Module):
         self.crane_head = nn.Linear(hidden_dim, n_cranes)
         self.lift_head = nn.Linear(hidden_dim, max_requests)
         self.equipment_head = nn.Linear(hidden_dim, n_spmts + n_cranes)
+        # Attention-based heads for variable-size entity selection.
+        # Used when entity_embeddings are provided (e.g., per-block GNN
+        # embeddings), replacing the fixed-size linear request/lift/target heads.
+        self.attn_request_head = AttentionActionHead(hidden_dim, entity_dim)
+        self.attn_lift_head = AttentionActionHead(hidden_dim, entity_dim)
+        self.attn_target_block_head = AttentionActionHead(hidden_dim, entity_dim)
         # Supply chain heads (created even if size=1 for uniform interface)
         self.supplier_head = nn.Linear(hidden_dim, max(n_suppliers, 1))
         self.material_head = nn.Linear(hidden_dim, max(n_inventory, 1))
@@ -88,7 +149,10 @@ class ActorCriticPolicy(nn.Module):
         )
 
     def forward(
-        self, state: torch.Tensor, mask: Dict[str, torch.Tensor] | None = None
+        self,
+        state: torch.Tensor,
+        mask: Dict[str, torch.Tensor] | None = None,
+        entity_embeddings: torch.Tensor | None = None,
     ) -> Tuple[Dict[str, Categorical], torch.Tensor]:
         features = self.shared(state)
 
@@ -98,18 +162,32 @@ class ActorCriticPolicy(nn.Module):
         readiness_logit = self.readiness_gate(features)  # (batch, 1) or (1,)
         self._last_readiness_prob = torch.sigmoid(readiness_logit)
 
-        # Compute logits for all heads
+        # Compute logits for all heads.
+        # When entity_embeddings are provided, use attention-based heads for
+        # request/lift/target_block (variable-size selection over entities).
+        # Otherwise fall back to fixed-size linear heads.
+        if entity_embeddings is not None:
+            request_logits = self.attn_request_head(features, entity_embeddings)
+            lift_logits = self.attn_lift_head(features, entity_embeddings)
+            target_block_logits = self.attn_target_block_head(
+                features, entity_embeddings
+            )
+        else:
+            request_logits = self.request_head(features)
+            lift_logits = self.lift_head(features)
+            target_block_logits = self.target_block_head(features)
+
         logits = {
             "action_type": self.action_type_head(features),
             "spmt": self.spmt_head(features),
-            "request": self.request_head(features),
+            "request": request_logits,
             "crane": self.crane_head(features),
-            "lift": self.lift_head(features),
+            "lift": lift_logits,
             "equipment": self.equipment_head(features),
             "supplier": self.supplier_head(features),
             "material": self.material_head(features),
             "labor_pool": self.labor_pool_head(features),
-            "target_block": self.target_block_head(features),
+            "target_block": target_block_logits,
         }
 
         # Modulate dispatch action logits by readiness gate.
@@ -185,8 +263,9 @@ class ActorCriticPolicy(nn.Module):
         state: torch.Tensor,
         mask: Dict[str, Any] | None = None,
         deterministic: bool = False,
+        entity_embeddings: torch.Tensor | None = None,
     ) -> Tuple[Dict[str, torch.Tensor], torch.Tensor, torch.Tensor]:
-        action_dist, value = self.forward(state, mask)
+        action_dist, value = self.forward(state, mask, entity_embeddings)
         if deterministic:
             action = {k: d.probs.argmax(dim=-1) for k, d in action_dist.items()}
         else:
@@ -229,8 +308,9 @@ class ActorCriticPolicy(nn.Module):
         state: torch.Tensor,
         action: Dict[str, torch.Tensor],
         mask: Dict[str, torch.Tensor] | None = None,
+        entity_embeddings: torch.Tensor | None = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        action_dist, value = self.forward(state, mask)
+        action_dist, value = self.forward(state, mask, entity_embeddings)
         log_prob = self._compute_log_prob(action_dist, action)
         entropy = self._compute_entropy(action_dist, action["action_type"])
         return log_prob, entropy, value

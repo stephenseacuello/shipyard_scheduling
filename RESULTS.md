@@ -901,6 +901,15 @@ Mann-Whitney U: p=0.0154, Cohen's d=−1.30 (large effect, MPC significantly bet
 
 **Note:** DAgger achieves 0% on medium at deployment because the observation normalizer (RunningMeanStd) was not saved with the checkpoint. Rebuilding from expert rollouts produces mismatched statistics. Training-time evaluation showed 34.3% of expert. Fix applied: normalizer state now saved in checkpoint.
 
+**Retraining with normalizer saving (2026-03-12):** Full curriculum retraining (10 iters/stage, 15 init episodes, 8 DAgger episodes, 20 train epochs) with normalizer persistence confirmed the scalability gap is fundamental, not a normalizer artifact:
+- Tiny (10 blocks): throughput 0.0204 (100% of expert)
+- Small (50 blocks): throughput 0.1000 (100% of expert, loss 0.023)
+- Medium (200 blocks): throughput 0.0000 at final eval, despite brief improvement at iterations 7-10 (peak 0.0385)
+- Loss divergence: medium stage loss increases monotonically from 1.78 → 2.77 across iterations
+- HHI full-scale (1600 blocks): throughput 0.0000
+
+The medium stage showed transient learning (iterations 7-10 achieved throughput 0.035-0.038) but the final checkpoint regressed, suggesting the policy oscillates without converging. Total training time: 8.7 hours.
+
 **Pairwise tests:** All pairs significant (p<0.05). Expert vs MPC: d=66.7. Expert vs GA: d=25.9. MPC vs GA: d=3.1.
 
 ### DAgger Scalability Gap (Updated with Curriculum Results)
