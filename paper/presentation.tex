@@ -1,238 +1,399 @@
-\documentclass[aspectratio=169,11pt]{beamer}
+\documentclass[aspectratio=169,12pt]{beamer}
 
-\usetheme{Madrid}
-\usecolortheme{default}
+% --- Modern theme setup ---
+\usetheme{metropolis}
 \setbeamertemplate{navigation symbols}{}
-\setbeamertemplate{footline}[frame number]
+\setbeamercolor{frametitle}{bg=black!85, fg=white}
+\setbeamercolor{progress bar}{fg=orange!80!black}
+\setbeamercolor{alerted text}{fg=orange!80!black}
 
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
 \usepackage{amsmath,amssymb}
 \usepackage{graphicx}
 \usepackage{booktabs}
-\usepackage{subcaption}
+\usepackage{multirow}
 \usepackage{tikz}
-\usetikzlibrary{shapes,arrows,positioning}
+\usetikzlibrary{shapes,arrows.meta,positioning,fit,calc,decorations.pathreplacing}
+\usepackage{xcolor}
+\usepackage{fontawesome5}
 
-\title{Health-Aware Block Scheduling for\\Large-Scale LNG Carrier Production\\via Graph Reinforcement Learning}
-\subtitle{ISE 572 --- Final Project Presentation}
+% Custom colors
+\definecolor{hhi}{RGB}{0, 82, 136}
+\definecolor{accent}{RGB}{230, 126, 34}
+\definecolor{success}{RGB}{39, 174, 96}
+\definecolor{danger}{RGB}{231, 76, 60}
+\definecolor{muted}{RGB}{127, 140, 141}
+
+\title{Health-Aware Block Scheduling\\for LNG Carrier Production}
+\subtitle{ISE 572 --- Reinforcement Learning Meets Shipbuilding}
 \author{Stephen Eacuello \and Steven Blum}
 \date{Spring 2026}
+\institute{University of Rhode Island}
 
 \begin{document}
 
-%--------------------------------------------------------------
+%==============================================================
+% TITLE
+%==============================================================
 \begin{frame}
 \titlepage
 \end{frame}
 
+%==============================================================
+\section{The Problem}
+%==============================================================
+
 %--------------------------------------------------------------
-\begin{frame}{Outline}
-\tableofcontents
-\end{frame}
+% SLIDE: Hook
+%--------------------------------------------------------------
+\begin{frame}{A \$200M Scheduling Problem}
 
-%==============================================================
-\section{Problem \& Motivation}
-%==============================================================
-
-\begin{frame}{The Shipbuilding Scheduling Challenge}
 \begin{columns}[T]
 \column{0.55\textwidth}
-\textbf{HD Hyundai Heavy Industries, Ulsan}
-\begin{itemize}
-    \item World's largest shipbuilding facility
-    \item 10 dry docks, 9 Goliath cranes, 24 SPMTs
-    \item 200+ blocks per LNG carrier
-    \item Multi-ship concurrent production
-\end{itemize}
 
 \vspace{0.5em}
-\textbf{Why is this hard?}
-\begin{itemize}
-    \item Combinatorial action space ($4 \times 24 \times 200 \times 9$)
-    \item Equipment degradation affects scheduling
-    \item Tight delivery deadlines (contractual penalties)
-    \item Supply chain dependencies
-\end{itemize}
+An LNG carrier costs \textbf{\$200M+} and takes \textbf{2--3 years} to build.
+
+\vspace{1em}
+Each ship is assembled from \textbf{200 blocks}, each passing through \textbf{8 production stages}, moved by \textbf{24 transporters} and lifted by \textbf{9 cranes}.
+
+\vspace{1em}
+Today, this scheduling is done \textbf{manually} --- by experienced planners using spreadsheets and intuition.
+
+\vspace{1em}
+{\color{accent}\textbf{Question:}} Can we learn a policy that schedules better than a human expert?
 
 \column{0.42\textwidth}
 \includegraphics[width=\textwidth]{figures/shipyard_layout.png}
+
+\vspace{0.3em}
+{\footnotesize\color{muted} HD Hyundai Heavy Industries\\Ulsan, South Korea\\World's largest shipyard}
 \end{columns}
 \end{frame}
 
 %--------------------------------------------------------------
-\begin{frame}{Production Pipeline}
+% SLIDE: Contributions
+%--------------------------------------------------------------
+\begin{frame}{What We Did}
+
+\begin{enumerate}
+    \setlength\itemsep{1em}
+    \item \textbf{Built a full simulation} of HHI Ulsan --- 200 blocks, 10 docks, 9 cranes, 24 SPMTs, with NSRP-calibrated processing times
+    \item \textbf{Discovered entropy collapse} --- PPO/SAC fail catastrophically in hierarchical masked action spaces (entropy $\to$ 0 by epoch 5)
+    \item \textbf{Solved it with DAgger} --- imitation learning achieves \textbf{118\% of expert} on 50-block instances, bypassing the exploration problem entirely
+    \item \textbf{Exposed a scalability wall} --- all methods (RL, OR, imitation) fail to scale beyond 200 blocks; simple EDD dispatch remains king at scale
+\end{enumerate}
+\end{frame}
+
+%--------------------------------------------------------------
+% SLIDE: Production pipeline (visual, minimal text)
+%--------------------------------------------------------------
+\begin{frame}{How a Ship Gets Built}
 \centering
 \begin{tikzpicture}[
-    node distance=1.2cm,
-    stage/.style={rectangle, rounded corners, draw=blue!60, fill=blue!10,
-                  text width=2.2cm, minimum height=0.8cm, align=center, font=\small},
-    arrow/.style={->, thick, blue!60}
+    node distance=0.6cm,
+    stage/.style={rectangle, rounded corners=3pt, draw=#1!70, fill=#1!12,
+                  text width=1.9cm, minimum height=0.85cm, align=center,
+                  font=\scriptsize\bfseries},
+    stage/.default=hhi,
+    arrow/.style={-{Stealth[length=5pt]}, thick, hhi!60},
+    label/.style={font=\tiny\color{muted}, below=1pt}
 ]
-\node[stage] (steel) {Steel\\Processing};
-\node[stage, right=of steel] (sub) {Sub-Assembly};
-\node[stage, right=of sub] (block) {Block\\Assembly};
-\node[stage, right=of block] (outfit) {Outfitting};
-\node[stage, right=of outfit] (paint) {Painting};
-\node[stage, below=0.8cm of block] (pe) {Pre-Erection};
-\node[stage, right=of pe] (erect) {Erection\\(Dock)};
-\node[stage, right=of erect] (launch) {Launch \&\\Sea Trials};
+% Row 1: Shop stages
+\node[stage=hhi] (s0) {Steel\\Cutting};
+\node[stage=hhi, right=of s0] (s1) {Part\\Fabrication};
+\node[stage=hhi, right=of s1] (s2) {Panel\\Assembly};
+\node[stage=accent, right=of s2] (s3) {Block\\Assembly};
+\node[stage=hhi, right=of s3] (s4) {Outfitting};
+\node[stage=hhi, right=of s4] (s5) {Painting};
 
-\draw[arrow] (steel) -- (sub);
-\draw[arrow] (sub) -- (block);
-\draw[arrow] (block) -- (outfit);
-\draw[arrow] (outfit) -- (paint);
-\draw[arrow] (paint) -- (pe);
-\draw[arrow] (pe) -- (erect);
-\draw[arrow] (erect) -- (launch);
+% Row 2: Dock stages
+\node[stage=success, below=1cm of s3] (s6) {Pre-Erection};
+\node[stage=success, right=of s6] (s7) {Erection};
+\node[stage=success, right=of s7] (s8) {Sea Trials\\+ Delivery};
+
+% Labels
+\node[label] at (s0.south) {8 crew};
+\node[label] at (s3.south) {16 crew};
+\node[label] at (s7.south) {crane};
+
+% Arrows
+\draw[arrow] (s0) -- (s1);
+\draw[arrow] (s1) -- (s2);
+\draw[arrow] (s2) -- (s3);
+\draw[arrow] (s3) -- (s4);
+\draw[arrow] (s4) -- (s5);
+\draw[arrow] (s5) -- (s6);
+\draw[arrow] (s6) -- (s7);
+\draw[arrow] (s7) -- (s8);
+
+% Braces
+\draw[decorate, decoration={brace, amplitude=6pt, mirror}, thick, hhi!60]
+    ([yshift=-18pt]s0.south west) -- ([yshift=-18pt]s5.south east)
+    node[midway, below=8pt, font=\small] {Shop (SPMT transport)};
+\draw[decorate, decoration={brace, amplitude=6pt, mirror}, thick, success!80!black]
+    ([yshift=-18pt]s6.south west) -- ([yshift=-18pt]s8.south east)
+    node[midway, below=8pt, font=\small] {Dock (Goliath crane)};
 \end{tikzpicture}
 
 \vspace{1em}
-\begin{itemize}
-    \item 8 production stages per block (steel $\to$ sea trials)
-    \item NSRP-calibrated processing times from OECD CGT coefficients
-    \item Equipment health affects stage durations
-\end{itemize}
+\begin{columns}[c]
+\column{0.3\textwidth}\centering
+{\Large\color{hhi}\textbf{200}} blocks/ship
+\column{0.3\textwidth}\centering
+{\Large\color{accent}\textbf{1.24M}} man-hours/ship
+\column{0.3\textwidth}\centering
+{\Large\color{success}\textbf{8}} production stages
+\end{columns}
 \end{frame}
 
 %==============================================================
 \section{Method}
 %==============================================================
 
-\begin{frame}{MDP Formulation}
+%--------------------------------------------------------------
+% SLIDE: MDP (cleaner two-column)
+%--------------------------------------------------------------
+\begin{frame}{Formulation: Scheduling as an MDP}
+
 \begin{columns}[T]
 \column{0.48\textwidth}
-\textbf{State} (heterogeneous graph)
-\begin{itemize}
-    \item Block nodes: stage, progress, deadline
-    \item Equipment nodes: health, location, load
-    \item Ship nodes: completion \%, dock assignment
-    \item Edge types: assigned-to, queued-at, depends-on
-\end{itemize}
 
+\textbf{State}: Heterogeneous graph
 \vspace{0.3em}
-\textbf{GNN Encoder}
-\begin{itemize}
-    \item 3-layer GATv2 with edge features
-    \item Global attention pooling
-    \item Fixed-size embedding ($\mathbb{R}^{256}$)
-\end{itemize}
-
-\column{0.48\textwidth}
-\textbf{Action} (hierarchical, 10 heads)
-\begin{itemize}
-    \item Action type: transport / erect / hold / maintain
-    \item Equipment: which SPMT or crane
-    \item Target: which block to move
-    \item Only relevant heads contribute to $\log\pi$
-\end{itemize}
-
-\vspace{0.3em}
-\textbf{Reward}
-\begin{itemize}
-    \item $+1$ per block stage advance
-    \item $+10$ ship delivery bonus
-    \item $-0.5$ deadline violation penalty
-    \item Equipment health penalties
-\end{itemize}
-\end{columns}
-\end{frame}
-
-%--------------------------------------------------------------
-\begin{frame}{Training: Why DAgger over PPO?}
-\begin{columns}[T]
-\column{0.48\textwidth}
-\textbf{PPO Entropy Collapse}
-\includegraphics[width=\textwidth]{figures/entropy_collapse.png}
-
-\begin{itemize}
-    \item Entropy: $2.27 \to 0.00$ by epoch 5
-    \item Policy becomes deterministic too fast
-    \item Hierarchical action space amplifies issue
-\end{itemize}
-
-\column{0.48\textwidth}
-\textbf{DAgger with Curriculum}
-\includegraphics[width=\textwidth]{figures/curriculum_dagger.png}
-
-\begin{itemize}
-    \item Expert: EDD (Earliest Due Date) dispatch
-    \item 3-stage curriculum: 10 $\to$ 50 $\to$ 200 blocks
-    \item Observation normalization (Welford's)
-    \item Per-stage beta reset: $0.8 \to 0.2$
-\end{itemize}
-\end{columns}
-\end{frame}
-
-%--------------------------------------------------------------
-\begin{frame}{Architecture Overview}
-\centering
 \begin{tikzpicture}[
-    node distance=0.8cm,
-    block/.style={rectangle, rounded corners, draw=blue!60, fill=blue!10,
-                  text width=2.5cm, minimum height=0.7cm, align=center, font=\small},
-    head/.style={rectangle, rounded corners, draw=red!60, fill=red!10,
-                 text width=1.8cm, minimum height=0.6cm, align=center, font=\scriptsize},
-    arrow/.style={->, thick}
+    n/.style={circle, draw=#1!70, fill=#1!15, minimum size=8mm,
+              font=\tiny\bfseries, inner sep=0pt},
+    n/.default=hhi
 ]
-\node[block] (env) {Shipyard Env\\(Gymnasium)};
-\node[block, right=1.5cm of env] (gnn) {GNN Encoder\\(GATv2)};
-\node[block, right=1.5cm of gnn] (shared) {Shared MLP\\(256-dim)};
-
-\node[head, above right=0.3cm and 1.2cm of shared] (at) {Action Type};
-\node[head, right=1.2cm of shared] (eq) {Equipment};
-\node[head, below right=0.3cm and 1.2cm of shared] (tgt) {Target Block};
-
-\node[block, below=1cm of shared] (critic) {Critic\\$V(s)$};
-\node[block, below=1cm of gnn] (gate) {Readiness\\Gate $\sigma$};
-
-\draw[arrow] (env) -- node[above, font=\scriptsize] {graph} (gnn);
-\draw[arrow] (gnn) -- node[above, font=\scriptsize] {$h \in \mathbb{R}^{256}$} (shared);
-\draw[arrow] (shared) -- (at);
-\draw[arrow] (shared) -- (eq);
-\draw[arrow] (shared) -- (tgt);
-\draw[arrow] (shared) -- (critic);
-\draw[arrow] (shared) -- (gate);
-\draw[arrow, dashed, red!60] (gate) -| node[right, font=\scriptsize] {modulate} (at);
+\node[n=hhi] (b) at (0,0) {Block};
+\node[n=accent] (e) at (1.5,0.5) {Equip};
+\node[n=success] (s) at (1.5,-0.5) {Ship};
+\draw[->, thick, muted] (b) -- node[above, font=\tiny] {queued} (e);
+\draw[->, thick, muted] (b) -- node[below, font=\tiny] {belongs} (s);
 \end{tikzpicture}
 
 \vspace{0.5em}
-\begin{itemize}
-    \item Readiness gate: logistic regression $P(\text{ready})$ modulates dispatch actions
-    \item Attention-based heads for variable-size entity selection (10--1600 blocks)
-    \item Action masking: only valid actions get non-$-\infty$ logits
-\end{itemize}
+GATv2 encoder $\to$ fixed $\mathbb{R}^{256}$ embedding\\
+{\small\color{muted} Works for any number of blocks}
+
+\column{0.48\textwidth}
+
+\textbf{Action}: Hierarchical (10 heads)
+\vspace{0.3em}
+
+\begin{tabular}{@{}ll@{}}
+{\color{accent}\faArrowRight} & \textit{What?} transport / erect / hold \\
+{\color{accent}\faTruck} & \textit{Which SPMT?} (1 of 24) \\
+{\color{accent}\faCube} & \textit{Which block?} (1 of 200) \\
+{\color{accent}\faIndustry} & \textit{Which crane?} (1 of 9)
+\end{tabular}
+
+\vspace{0.8em}
+\textbf{Reward}: $+1$ stage advance, $+10$ ship delivery, $-0.5$ per tardy step
+
+\end{columns}
+
+\vspace{0.5em}
+\centering
+{\small\color{muted} Action masking ensures only valid actions are sampled --- but this creates a problem\ldots}
 \end{frame}
 
-%==============================================================
-\section{Baselines}
-%==============================================================
+%--------------------------------------------------------------
+% SLIDE: The Problem --- Entropy Collapse (the tension)
+%--------------------------------------------------------------
+\begin{frame}{The Core Problem: Entropy Collapse}
 
-\begin{frame}{Baseline Methods}
-\begin{tabular}{lp{9cm}}
-\toprule
-\textbf{Method} & \textbf{Description} \\
-\midrule
-Expert (EDD) & Earliest Due Date priority dispatch --- deterministic rule \\
-\addlinespace
-MPC & Rolling-horizon mixed-integer program (PuLP solver, 10-step horizon) \\
-\addlinespace
-GA & Genetic algorithm with permutation chromosomes (pop=50, 100 gens) \\
-\addlinespace
-PuLP MIP & Full-horizon mixed-integer program (exact but times out $>$50 blocks) \\
-\addlinespace
-DAgger & Dataset Aggregation from Expert demonstrations \\
-\addlinespace
-PPO/SAC & Pure RL (suffers entropy collapse in hierarchical action space) \\
-\bottomrule
-\end{tabular}
+\begin{columns}[T]
+\column{0.48\textwidth}
+\includegraphics[width=\textwidth]{figures/entropy_collapse.png}
+
+\column{0.48\textwidth}
+\vspace{1em}
+PPO entropy: \textbf{2.27 $\to$ 0.00} by epoch 5.
+
+\vspace{0.5em}
+The policy becomes \textit{completely deterministic} before it has learned anything useful.
+
+\vspace{1em}
+\textbf{Why?} Action masking reduces valid options to 1--2 choices. Entropy is \textit{mathematically bounded} by $\log k$, where $k$ is the number of valid actions.
+
+\vspace{1em}
+\textbf{Result:}\\
+PPO: \textbf{0.4\%} of expert\\
+SAC: \textbf{28.7\%} of expert\\
+{\color{danger} Neither is usable.}
+\end{columns}
+\end{frame}
+
+%--------------------------------------------------------------
+% SLIDE: Our Solution --- DAgger
+%--------------------------------------------------------------
+\begin{frame}{Our Solution: Learn from an Expert via DAgger}
+
+\begin{columns}[T]
+\column{0.55\textwidth}
+\includegraphics[width=\textwidth]{figures/curriculum_dagger.png}
+
+\column{0.42\textwidth}
+\vspace{0.5em}
+\textbf{DAgger} (Dataset Aggregation):\\
+Supervised learning from expert demonstrations --- no exploration needed.
+
+\vspace{0.8em}
+\textbf{Curriculum}: 3 stages
+\begin{enumerate}
+    \item Tiny: 10 blocks
+    \item Small: 50 blocks
+    \item Medium: 200 blocks
+\end{enumerate}
+
+\vspace{0.5em}
+Each stage: $\beta$ anneals $0.8 \to 0.2$\\
+{\small (expert $\to$ student control)}
+
+\vspace{0.8em}
+{\color{success}\textbf{Small instance: 118\% of expert}}\\
+{\small DAgger learns error recovery absent from EDD rule}
+\end{columns}
+\end{frame}
+
+%--------------------------------------------------------------
+% SLIDE: Architecture (cleaner)
+%--------------------------------------------------------------
+\begin{frame}{Architecture}
+\centering
+\begin{tikzpicture}[
+    node distance=0.6cm,
+    comp/.style={rectangle, rounded corners=3pt, draw=#1!70, fill=#1!12,
+                 minimum height=0.8cm, align=center, font=\small},
+    comp/.default=hhi,
+    head/.style={rectangle, rounded corners=2pt, draw=accent!70, fill=accent!12,
+                 minimum height=0.6cm, align=center, font=\scriptsize},
+    arr/.style={-{Stealth[length=5pt]}, thick, muted}
+]
+% Main pipeline
+\node[comp=hhi, text width=2.2cm] (env) {Shipyard\\Environment};
+\node[comp=hhi, text width=2cm, right=1.2cm of env] (gnn) {GNN\\(GATv2)};
+\node[comp=hhi, text width=2cm, right=1.2cm of gnn] (mlp) {Shared\\MLP};
+
+% Heads fanning out
+\node[head, text width=1.6cm, above right=0.5cm and 0.8cm of mlp] (h1) {Action Type};
+\node[head, text width=1.6cm, right=0.8cm of mlp, yshift=0.1cm] (h2) {SPMT};
+\node[head, text width=1.6cm, below right=-0.1cm and 0.8cm of mlp] (h3) {Crane};
+\node[head, text width=1.6cm, below right=0.5cm and 0.8cm of mlp] (h4) {Block Target};
+
+% Critic & Gate
+\node[comp=success, text width=1.8cm, below=0.8cm of mlp] (critic) {Critic $V(s)$};
+\node[comp=danger, text width=1.8cm, below=0.8cm of gnn] (gate) {Readiness\\Gate $\sigma$};
+
+% Arrows
+\draw[arr] (env) -- node[above, font=\scriptsize\color{muted}] {graph} (gnn);
+\draw[arr] (gnn) -- node[above, font=\scriptsize\color{muted}] {$h \in \mathbb{R}^{256}$} (mlp);
+\draw[arr] (mlp) -- (h1);
+\draw[arr] (mlp) -- (h2);
+\draw[arr] (mlp) -- (h3);
+\draw[arr] (mlp) -- (h4);
+\draw[arr] (mlp) -- (critic);
+\draw[arr] (mlp) -- (gate);
+\draw[arr, dashed, danger!70] (gate.east) -- ++(0.5,0) |- (h1.south west)
+    node[pos=0.25, right, font=\scriptsize\color{danger}] {modulate};
+
+% Label
+\node[font=\tiny\color{muted}, below=0.2cm of h4] {+ 6 more heads (equipment, supplier, labor\ldots)};
+\end{tikzpicture}
+
+\vspace{0.5em}
+\begin{columns}[c]
+\column{0.3\textwidth}\centering
+{\small\textbf{Readiness gate}\\logistic regression\\modulates dispatch}
+\column{0.3\textwidth}\centering
+{\small\textbf{10 action heads}\\only relevant heads\\contribute to $\log\pi$}
+\column{0.3\textwidth}\centering
+{\small\textbf{Action masking}\\invalid $\to$ $-20$ logits\\(soft, not $-\infty$)}
+\end{columns}
 \end{frame}
 
 %==============================================================
 \section{Results}
 %==============================================================
 
-\begin{frame}{Cross-Instance Comparison}
+%--------------------------------------------------------------
+% SLIDE: The good news
+%--------------------------------------------------------------
+\begin{frame}{Result 1: DAgger Beats the Expert (on Small Instances)}
+
+\begin{columns}[T]
+\column{0.48\textwidth}
+\includegraphics[width=\textwidth]{figures/method_comparison.png}
+
+\column{0.48\textwidth}
+\vspace{1em}
+\begin{tabular}{@{}lrl@{}}
+\toprule
+\textbf{Method} & \textbf{vs Expert} & \\
+\midrule
+PPO & 0.4\% & {\color{danger}\faTimesCircle} \\
+SAC & 28.7\% & {\color{danger}\faTimesCircle} \\
+BC & 85.2\% & {\color{muted}\faMinusCircle} \\
+GAIL & 78.4\% & {\color{muted}\faMinusCircle} \\
+\textbf{DAgger} & \textbf{118\%} & {\color{success}\faCheckCircle} \\
+\bottomrule
+\end{tabular}
+
+\vspace{1em}
+DAgger \textit{exceeds} expert by learning error recovery behaviors the rule-based EDD expert never exhibits.
+
+\vspace{0.5em}
+{\small\color{muted} 10-seed validation: $97.0\% \pm 2.5\%$ (excluding 1 outlier)}
+\end{columns}
+\end{frame}
+
+%--------------------------------------------------------------
+% SLIDE: The bad news
+%--------------------------------------------------------------
+\begin{frame}{Result 2: \ldots But Nothing Scales to 200 Blocks}
+
+\begin{columns}[T]
+\column{0.55\textwidth}
+\includegraphics[width=\textwidth]{figures/scaling_analysis.png}
+
+\column{0.42\textwidth}
+\vspace{0.5em}
+\centering
+\begin{tabular}{@{}lcc@{}}
+\toprule
+& \textbf{Small} & \textbf{Medium} \\
+& (50) & (200) \\
+\midrule
+Expert & 100\% & \textbf{100\%} \\
+MPC & 104\% & 21\% \\
+GA & 109\% & 11\% \\
+DAgger & \textbf{118\%} & {\color{danger}0\%} \\
+\bottomrule
+\end{tabular}
+
+\vspace{1em}
+{\small
+\textbf{Expert advantage} grows with scale:\\
+1.0$\times$ (tiny) $\to$ 4.7$\times$ (medium)
+}
+
+\vspace{0.5em}
+{\small GA: 1000s/episode at medium\\MPC: 240K binary variables\\DAgger: distribution shift}
+\end{columns}
+
+\vspace{0.3em}
+\centering
+{\color{accent}\textbf{The simplest method (EDD dispatch) is the only one that scales.}}
+\end{frame}
+
+%--------------------------------------------------------------
+% SLIDE: Cross-config comparison (data slide)
+%--------------------------------------------------------------
+\begin{frame}{Statistical Comparison (5 Seeds, Mann-Whitney U)}
+
 \begin{columns}[T]
 \column{0.48\textwidth}
 \centering
@@ -241,134 +402,145 @@ PPO/SAC & Pure RL (suffers entropy collapse in hierarchical action space) \\
 \column{0.48\textwidth}
 \centering
 \small
-\begin{tabular}{llcc}
+\begin{tabular}{@{}llcc@{}}
 \toprule
-Agent & Metric & Medium & Small \\
+& & \textbf{Small} & \textbf{Medium} \\
 \midrule
-Expert & Blocks & $111 \pm 1$ & $50 \pm 0$ \\
-       & Thru. & $0.111$ & $0.053$ \\
+\multirow{2}{*}{Expert} & Blocks & $50$ & $\mathbf{111 \pm 1}$ \\
+& Thru. & $0.053$ & $\mathbf{0.111}$ \\
 \midrule
-MPC & Blocks & $24 \pm 1$ & $50 \pm 0$ \\
-    & Thru. & $0.024$ & $0.055$ \\
+\multirow{2}{*}{MPC} & Blocks & $50$ & $24 \pm 1$ \\
+& Thru. & $0.055$ & $0.024$ \\
 \midrule
-GA & Blocks & $12 \pm 5$ & $50 \pm 0$ \\
-   & Thru. & $0.012$ & $0.058$ \\
+\multirow{2}{*}{GA} & Blocks & $50$ & $12 \pm 5$ \\
+& Thru. & $0.058$ & $0.012$ \\
 \midrule
-DAgger & Blocks & $0 \pm 0$ & $50 \pm 0$ \\
-       & Thru. & $0.000$ & $\mathbf{0.062}$ \\
+\multirow{2}{*}{DAgger} & Blocks & $50$ & $0 \pm 0$ \\
+& Thru. & $\mathbf{0.062}$ & $0.000$ \\
 \bottomrule
 \end{tabular}
 
 \vspace{0.5em}
-\footnotesize $n$=5 seeds, Mann-Whitney U tests
+{\footnotesize All medium pairs: $p < 0.001$\\Effect sizes: $d > 25$ (huge)}
 \end{columns}
-
-\vspace{0.5em}
-\textbf{Key finding}: All agents solve small (50 blocks). Only Expert scales to medium (200 blocks). DAgger is \emph{best} on small but fails on medium.
 \end{frame}
 
 %--------------------------------------------------------------
-\begin{frame}{Scaling Analysis}
+% SLIDE: Why DAgger fails at scale
+%--------------------------------------------------------------
+\begin{frame}{Why Does DAgger Fail at Scale?}
+
 \begin{columns}[T]
 \column{0.55\textwidth}
-\includegraphics[width=\textwidth]{figures/scaling_analysis.png}
+\vspace{0.5em}
+\textbf{Curriculum training dynamics (medium stage):}
+
+\vspace{0.3em}
+\begin{tabular}{@{}cccc@{}}
+\toprule
+Iter & $\beta$ & Loss & Throughput \\
+\midrule
+1 & 0.80 & 2.09 & 0.000 \\
+5 & 0.53 & 2.42 & 0.000 \\
+7 & 0.40 & 2.57 & {\color{success}0.002} \\
+8 & 0.33 & 2.65 & {\color{success}0.038} \\
+10 & 0.20 & 2.77 & {\color{danger}0.000} \\
+\bottomrule
+\end{tabular}
+
+\vspace{0.5em}
+{\small Loss \textit{increases monotonically}.\\The policy oscillates --- learns transiently,\\then regresses at final checkpoint.}
 
 \column{0.42\textwidth}
-\textbf{4 configurations:}
-\begin{itemize}
-    \item Tiny: 10 blocks
-    \item Small: 50 blocks
-    \item Medium: 200 blocks
-    \item Large: 1600 blocks (HHI plate decomp.)
-\end{itemize}
+\vspace{0.5em}
+\textbf{Root causes:}
 
 \vspace{0.5em}
-\textbf{Observations:}
-\begin{itemize}
-    \item Expert advantage grows with scale
-    \item GA intractable beyond 200 blocks
-    \item MPC variable explosion at scale
-    \item DAgger: best small, worst medium
-\end{itemize}
-\end{columns}
-\end{frame}
-
-%--------------------------------------------------------------
-\begin{frame}{Method Comparison (Relative to Expert)}
-\centering
-\includegraphics[width=0.75\textwidth]{figures/method_comparison.png}
-
-\vspace{0.5em}
-\begin{itemize}
-    \item DAgger (small instance): \textbf{118\%} of expert throughput
-    \item Curriculum DAgger: 100\% small $\to$ 0\% medium (transient peak 34\% during training)
-    \item PPO: 0.4\% --- entropy collapse prevents learning
-    \item SAC: 28.7\% --- better exploration but still limited
-\end{itemize}
-\end{frame}
-
-%--------------------------------------------------------------
-\begin{frame}{Calibration Quality}
-\begin{columns}[T]
-\column{0.55\textwidth}
-\includegraphics[width=\textwidth]{figures/calibration_r2.png}
-
-\column{0.42\textwidth}
-\textbf{NSRP calibration results:}
-\begin{itemize}
-    \item Painting: $R^2 = 0.88$
-    \item Steel processing: $R^2 = 0.72$
-    \item Sub-assembly: $R^2 = 0.65$
-    \item Block assembly: $R^2 = -0.03$
-\end{itemize}
-
-\vspace{0.5em}
-\textbf{4-ship extended run:}
-\begin{itemize}
-    \item 10,000 simulation steps
-    \item 850 blocks delivered
-    \item Realistic degradation curves
-\end{itemize}
-\end{columns}
-\end{frame}
-
-%==============================================================
-\section{Key Findings \& Limitations}
-%==============================================================
-
-\begin{frame}{Key Findings}
 \begin{enumerate}
-    \item \textbf{Scalability is the bottleneck}: All methods solve small instances; the challenge is scaling to 200+ blocks
-    \item \textbf{DAgger $>$ PPO for hierarchical actions}: Imitation learning avoids entropy collapse entirely
-    \item \textbf{Observation normalization matters}: RunningMeanStd normalizer must be saved with checkpoint --- different statistics at deployment cause complete failure
-    \item \textbf{Curriculum shows transient learning}: Peak 34\% during training on medium, but final checkpoint regresses to 0\%
-    \item \textbf{Expert (EDD) is remarkably strong}: Simple priority dispatch scales better than learned policies and optimization methods
-    \item \textbf{OR baselines don't scale either}: GA and MPC hit computational limits before RL hits learning limits
+    \setlength\itemsep{0.5em}
+    \item \textbf{Distribution shift}: 200-block state space has fundamentally different statistics than 50-block
+    \item \textbf{Capacity limit}: 256-dim MLP cannot represent the combinatorial 200-block action space
+    \item \textbf{Confirmed}: Retraining with normalizer persistence yields identical 0\% result
 \end{enumerate}
+\end{columns}
+\end{frame}
+
+%==============================================================
+\section{Takeaways}
+%==============================================================
+
+%--------------------------------------------------------------
+% SLIDE: Three things to remember
+%--------------------------------------------------------------
+\begin{frame}{Three Things to Remember}
+
+\vspace{1em}
+
+\begin{columns}[T]
+\column{0.3\textwidth}
+\centering
+{\Huge\color{danger} 1}
+
+\vspace{0.5em}
+\textbf{RL fails here}
+
+\vspace{0.3em}
+{\small Entropy collapse in masked hierarchical action spaces is a \textit{fundamental} problem, not a tuning issue. Validated across 3 domains.}
+
+\column{0.3\textwidth}
+\centering
+{\Huge\color{success} 2}
+
+\vspace{0.5em}
+\textbf{Imitation works\\(at small scale)}
+
+\vspace{0.3em}
+{\small DAgger achieves 118\% of expert by learning error recovery. But it cannot generalize beyond its training distribution.}
+
+\column{0.3\textwidth}
+\centering
+{\Huge\color{accent} 3}
+
+\vspace{0.5em}
+\textbf{Simple rules\\scale best}
+
+\vspace{0.3em}
+{\small EDD dispatch --- a 1-line priority rule --- outperforms MPC, GA, and learned policies at 200+ blocks. Scalability is the bottleneck.}
+\end{columns}
+
+\vspace{1.5em}
+\centering
+{\color{muted}\small Connection to ISE 572: Classic scheduling theory (EDD optimality for $1||\sum T_j$) extends surprisingly well to complex multi-resource settings.}
 \end{frame}
 
 %--------------------------------------------------------------
-\begin{frame}{Limitations \& Future Work}
+% SLIDE: Limitations & Future
+%--------------------------------------------------------------
+\begin{frame}{Limitations \& Future Directions}
+
 \begin{columns}[T]
 \column{0.48\textwidth}
-\textbf{Current Limitations}
+\textbf{What we couldn't solve}
+\vspace{0.3em}
 \begin{itemize}
-    \item Scalability gap (118\% small $\to$ 0\% medium)
-    \item Entropy collapse in PPO (epoch 5)
+    \setlength\itemsep{0.4em}
+    \item 118\% $\to$ 0\% scalability cliff
+    \item Entropy collapse (no RL fix found)
+    \item Block assembly calibration ($R^2\! = -0.03$)
     \item Simplified crane physics
-    \item No weather/disruption modeling
-    \item Block assembly calibration ($R^2 = -0.03$)
+    \item No weather or disruptions
 \end{itemize}
 
 \column{0.48\textwidth}
-\textbf{Future Directions}
+\textbf{What might work next}
+\vspace{0.3em}
 \begin{itemize}
-    \item Attention-based action heads for variable entity counts
-    \item Per-head adaptive entropy coefficients
+    \setlength\itemsep{0.4em}
+    \item \textbf{Attention-based heads} for variable entity counts {\small\color{muted}(implemented, not yet trained)}
+    \item Larger policy networks (512+)
+    \item Per-head adaptive entropy
     \item Transfer learning across ship types
     \item Digital twin integration
-    \item Real-world validation at Korean shipyards
-    \item Weather-dependent scheduling
 \end{itemize}
 \end{columns}
 \end{frame}
@@ -377,60 +549,52 @@ DAgger & Blocks & $0 \pm 0$ & $50 \pm 0$ \\
 \section{Demo}
 %==============================================================
 
-\begin{frame}{MES Dashboard}
+%--------------------------------------------------------------
+% SLIDE: Dashboard
+%--------------------------------------------------------------
+\begin{frame}{Live Demo: MES Dashboard}
+
 \centering
-\textbf{Manufacturing Execution System --- Live Simulation Monitor}
+\vspace{0.5em}
 
-\vspace{1em}
-\begin{columns}[T]
-\column{0.48\textwidth}
-\textbf{11 interactive tabs:}
-\begin{itemize}
-    \item Overview \& KPIs
-    \item Block status tracking
-    \item Ship progress
-    \item Fleet management (SPMTs)
-    \item Equipment health
-    \item Operations log
-    \item Dependency graph
-    \item GNN visualization
-    \item Plate decomposition
-    \item Yard map
-    \item Dock assignments
-\end{itemize}
+% Placeholder for screenshot --- replace with actual screenshot
+\begin{tikzpicture}
+\node[draw=muted, rounded corners=5pt, minimum width=12cm, minimum height=5cm,
+      fill=black!3, font=\large\color{muted}] {
+    \begin{tabular}{c}
+    {\Large\faDesktop} \\[0.5em]
+    Live dashboard demo at \texttt{localhost:8050} \\[0.3em]
+    {\small 11 tabs: Overview $\cdot$ Blocks $\cdot$ Ships $\cdot$ Fleet $\cdot$ Health} \\
+    {\small Operations $\cdot$ Dependencies $\cdot$ GNN $\cdot$ Plates $\cdot$ Map $\cdot$ Docks}
+    \end{tabular}
+};
+\end{tikzpicture}
 
-\column{0.48\textwidth}
-\textbf{Features:}
-\begin{itemize}
-    \item Real-time simulation playback
-    \item Historical run comparison
-    \item Supply chain monitoring
-    \item Equipment degradation tracking
-    \item One-click CSV export
-    \item W\&B experiment tracking
-\end{itemize}
-
-\vspace{1em}
-\texttt{python -m src.mes.app}\\
-\texttt{http://localhost:8050}
-\end{columns}
+\vspace{0.3em}
+{\small\color{muted}
+\texttt{PYTHONPATH=src python experiments/live\_simulation.py -{}-policy expert}\\
+\texttt{python -m src.mes.app}
+}
 \end{frame}
 
 %--------------------------------------------------------------
-\begin{frame}{Thank You}
-\centering
-\vspace{2em}
+% SLIDE: Thank you
+%--------------------------------------------------------------
+\begin{frame}[standout]
+
 {\Large Questions?}
 
 \vspace{2em}
-\textbf{Project Statistics:}\\
+
 \begin{tabular}{rl}
-Tests & 157 passing \\
-Configs & 4 instance sizes (10--1600 blocks) \\
-Agents & 6 (Expert, MPC, GA, PuLP, DAgger, PPO/SAC) \\
-Paper & 36 pages \\
-Dashboard & 11 tabs, real-time monitoring \\
+\faVial\ Tests & 157 passing \\
+\faCubes\ Instances & 4 sizes (10--1600 blocks) \\
+\faRobot\ Agents & 6 methods compared \\
+\faFile\ Paper & 36 pages \\
+\faChartLine\ Dashboard & 11 tabs, real-time \\
+\faClock\ Training & 50+ hours of experiments \\
 \end{tabular}
+
 \end{frame}
 
 \end{document}
