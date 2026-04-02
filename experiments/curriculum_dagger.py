@@ -23,6 +23,7 @@ import torch.nn.functional as F
 import yaml
 from typing import Dict, List, Any, Tuple, Optional
 from datetime import datetime
+from torch_geometric.data import Batch
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
@@ -110,9 +111,14 @@ class CurriculumDAggerTrainer:
             lr=lr, weight_decay=1e-5
         )
 
-        # Aggregated dataset
-        self.states: List[torch.Tensor] = []
+        # Aggregated dataset — store raw graph data for encoder gradient flow
+        self.graph_data_list: List[Any] = []  # HeteroData objects
         self.expert_actions: List[Dict[str, int]] = []
+
+        # Stage-aware replay buffers for curriculum learning
+        # Prevents catastrophic forgetting by maintaining data from all stages
+        self.stage_buffers: List[Tuple[List[Any], List[Dict[str, int]]]] = []
+        self.current_stage_start: int = 0  # index where current stage data begins
 
         # Observation normalizer (initialized lazily on first embedding)
         self.obs_normalizer: Optional[RunningMeanStd] = None
@@ -129,21 +135,41 @@ class CurriculumDAggerTrainer:
         
     def reset_dataset(self):
         """Clear the aggregated dataset."""
-        self.states = []
+        self.graph_data_list = []
         self.expert_actions = []
+
+    def advance_stage(self):
+        """Save current stage data to replay buffer and prepare for next stage.
+
+        Instead of discarding data, maintains separate buffers per stage
+        for mixed sampling during training. This prevents catastrophic
+        forgetting across curriculum stages.
+        """
+        # Save current stage data
+        current_data = self.graph_data_list[self.current_stage_start:]
+        current_actions = self.expert_actions[self.current_stage_start:]
+        if current_data:
+            self.stage_buffers.append((list(current_data), list(current_actions)))
+
+        # Mark where new stage data begins
+        self.current_stage_start = len(self.graph_data_list)
 
     def trim_dataset(self, keep_fraction: float = 0.5):
         """Retain most recent fraction of dataset (for stage transitions).
 
-        Keeps the newest samples to preserve knowledge from harder stages
-        while freeing memory.
+        Also saves data to stage buffer before trimming to prevent
+        catastrophic forgetting.
         """
-        n = len(self.states)
+        # Save current stage to replay buffer first
+        self.advance_stage()
+
+        n = len(self.graph_data_list)
         if n == 0:
             return
         keep = max(1, int(n * keep_fraction))
-        self.states = self.states[-keep:]
+        self.graph_data_list = self.graph_data_list[-keep:]
         self.expert_actions = self.expert_actions[-keep:]
+        self.current_stage_start = 0
 
     def _init_normalizer(self, dim: int):
         """Lazily initialize the observation normalizer."""
@@ -172,7 +198,7 @@ class CurriculumDAggerTrainer:
         n_episodes: int,
         max_steps: int = 500
     ) -> Dict[str, float]:
-        """Collect expert demonstrations."""
+        """Collect expert demonstrations (stores raw graph data, not embeddings)."""
         total_reward = 0.0
         total_throughput = 0.0
 
@@ -181,17 +207,14 @@ class CurriculumDAggerTrainer:
             ep_reward = 0.0
 
             for step in range(max_steps):
-                # Encode state
-                graph_data = env.get_graph_data().to(self.device)
-                with torch.no_grad():
-                    state_emb = self.encoder(graph_data)
-                    state_emb = self._update_and_normalize(state_emb)
+                # Store raw graph data for re-encoding during training
+                graph_data = env.get_graph_data().cpu()
 
                 # Get expert action
                 expert_action = expert.decide(env)
 
-                # Store normalized embedding
-                self.states.append(state_emb.cpu())
+                # Store graph data and expert action
+                self.graph_data_list.append(graph_data)
                 self.expert_actions.append(expert_action)
 
                 # Step with expert action
@@ -209,7 +232,7 @@ class CurriculumDAggerTrainer:
         return {
             "avg_reward": total_reward / n_episodes,
             "avg_throughput": total_throughput / n_episodes,
-            "n_samples": len(self.states),
+            "n_samples": len(self.graph_data_list),
         }
     
     def collect_dagger_data(
@@ -220,29 +243,41 @@ class CurriculumDAggerTrainer:
         beta: float = 0.5,
         max_steps: int = 500
     ) -> int:
-        """Collect DAgger data."""
+        """Collect DAgger data (stores raw graph data for encoder gradient flow)."""
         new_samples = 0
 
         for ep in range(n_episodes):
             obs, info = env.reset()
 
             for step in range(max_steps):
-                graph_data = env.get_graph_data().to(self.device)
-                with torch.no_grad():
-                    state_emb = self.encoder(graph_data)
-                    state_emb = self._update_and_normalize(state_emb)
+                # Store raw graph data
+                graph_data = env.get_graph_data()
 
                 expert_action = expert.decide(env)
 
-                self.states.append(state_emb.cpu())
+                self.graph_data_list.append(graph_data.cpu())
                 self.expert_actions.append(expert_action)
                 new_samples += 1
 
                 if random.random() < beta:
                     action = expert_action
                 else:
+                    # Encode with masking + entity embeddings for valid action selection
                     with torch.no_grad():
-                        policy_action, _, _ = self.policy.get_action(state_emb)
+                        state_emb, block_embs = self.encoder(
+                            graph_data.to(self.device), return_entity_embeddings=True
+                        )
+                        env_mask = env.get_action_mask()
+                        from agent.action_masking import flatten_env_mask_to_policy_mask
+                        pmask = flatten_env_mask_to_policy_mask(
+                            env_mask, self.policy.n_spmts,
+                            self.policy.n_cranes, self.policy.max_requests
+                        )
+                        tmask = {k: torch.tensor(v, device=self.device) for k, v in pmask.items()}
+                        entity_embs = block_embs.unsqueeze(0) if block_embs is not None else None
+                        policy_action, _, _ = self.policy.get_action(
+                            state_emb, mask=tmask, entity_embeddings=entity_embs
+                        )
                     action = {k: int(v.item()) for k, v in policy_action.items()}
 
                 obs, reward, terminated, truncated, info = env.step(action)
@@ -252,33 +287,73 @@ class CurriculumDAggerTrainer:
 
         return new_samples
     
+    def _sample_replay_batch(self, batch_size: int, replay_fraction: float = 0.3):
+        """Sample a batch mixing current data with replay from previous stages.
+
+        Allocates replay_fraction of the batch to previous stages (split
+        evenly among them), with the remainder from the current dataset.
+        Prevents catastrophic forgetting during curriculum transitions.
+        """
+        replay_graphs = []
+        replay_actions = []
+
+        if self.stage_buffers and replay_fraction > 0:
+            n_replay = max(1, int(batch_size * replay_fraction))
+            per_stage = max(1, n_replay // len(self.stage_buffers))
+
+            for stage_data, stage_acts in self.stage_buffers:
+                if not stage_data:
+                    continue
+                idxs = random.sample(range(len(stage_data)), min(per_stage, len(stage_data)))
+                replay_graphs.extend([stage_data[i] for i in idxs])
+                replay_actions.extend([stage_acts[i] for i in idxs])
+
+        return replay_graphs, replay_actions
+
     def train_epoch(self, batch_size: int = 64) -> float:
-        """Train policy for one epoch."""
-        n_samples = len(self.states)
+        """Train policy AND encoder on aggregated dataset for one epoch.
+
+        Re-encodes raw graph data through the GNN encoder during training,
+        allowing encoder gradients to flow. Mixes in replay samples from
+        previous curriculum stages to prevent catastrophic forgetting.
+        """
+        n_samples = len(self.graph_data_list)
         if n_samples < batch_size:
             batch_size = max(1, n_samples // 2)
-            
+
         indices = list(range(n_samples))
         random.shuffle(indices)
-        
+
         total_loss = 0.0
         n_batches = 0
-        
+
         for i in range(0, n_samples, batch_size):
             batch_indices = indices[i:i+batch_size]
             if len(batch_indices) < 2:
                 continue
-            
-            batch_states = torch.cat(
-                [self.states[j] for j in batch_indices], dim=0
-            ).to(self.device)
-            
+
+            # Collect current-stage data
+            batch_graph_list = [self.graph_data_list[j] for j in batch_indices]
+            batch_action_list = [self.expert_actions[j] for j in batch_indices]
+
+            # Mix in replay from previous stages (30% of batch)
+            replay_graphs, replay_actions = self._sample_replay_batch(
+                len(batch_indices), replay_fraction=0.3
+            )
+            if replay_graphs:
+                batch_graph_list.extend(replay_graphs)
+                batch_action_list.extend(replay_actions)
+
+            # Re-encode through GNN encoder (gradients flow to encoder!)
+            batch_graphs = Batch.from_data_list(batch_graph_list).to(self.device)
+            batch_states = self.encoder(batch_graphs)
+
             action_dist, _ = self.policy.forward(batch_states)
-            
+
             loss = 0.0
             for head_name, action_key in self.action_keys.items():
                 target = torch.tensor(
-                    [self.expert_actions[j].get(action_key, 0) for j in batch_indices],
+                    [a.get(action_key, 0) for a in batch_action_list],
                     device=self.device
                 )
                 max_idx = action_dist[head_name].probs.shape[-1] - 1
@@ -321,9 +396,19 @@ class CurriculumDAggerTrainer:
             for step in range(max_steps):
                 graph_data = env.get_graph_data().to(self.device)
                 with torch.no_grad():
-                    state_emb = self.encoder(graph_data)
-                    state_emb = self._normalize(state_emb)
-                    action, _, _ = self.policy.get_action(state_emb, deterministic=True)
+                    state_emb, block_embs = self.encoder(graph_data, return_entity_embeddings=True)
+                    # Apply masking + entity embeddings
+                    env_mask = env.get_action_mask()
+                    from agent.action_masking import flatten_env_mask_to_policy_mask
+                    pmask = flatten_env_mask_to_policy_mask(
+                        env_mask, self.policy.n_spmts,
+                        self.policy.n_cranes, self.policy.max_requests
+                    )
+                    tmask = {k: torch.tensor(v, device=self.device) for k, v in pmask.items()}
+                    entity_embs = block_embs.unsqueeze(0) if block_embs is not None else None
+                    action, _, _ = self.policy.get_action(
+                        state_emb, mask=tmask, entity_embeddings=entity_embs, deterministic=True
+                    )
 
                 action_cpu = {k: int(v.item()) for k, v in action.items()}
                 obs, reward, terminated, truncated, info = env.step(action_cpu)
@@ -366,6 +451,7 @@ def create_networks(env: HHIShipyardEnv, hidden_dim: int = 128) -> Tuple[Heterog
         max_requests=max(1600, getattr(env, 'n_blocks', 50)),
         hidden_dim=256,
         epsilon=0.0,
+        entity_dim=hidden_dim,  # Match GNN encoder hidden_dim for attention action heads
     )
     
     return encoder, policy
@@ -454,10 +540,10 @@ def run_curriculum_training(
         print(f"  max_steps for this stage: {stage_max_steps}")
 
         # Trim dataset at stage boundaries (keep 50% from prior stage)
-        if stage_idx > 0 and len(trainer.states) > 0:
-            pre_trim = len(trainer.states)
+        if stage_idx > 0 and len(trainer.graph_data_list) > 0:
+            pre_trim = len(trainer.graph_data_list)
             trainer.trim_dataset(keep_fraction=0.5)
-            print(f"  Dataset trimmed: {pre_trim} -> {len(trainer.states)} samples")
+            print(f"  Dataset trimmed: {pre_trim} -> {len(trainer.graph_data_list)} samples")
 
         # Collect expert demos
         print(f"\nCollecting {init_episodes} expert demonstrations...")
@@ -492,7 +578,7 @@ def run_curriculum_training(
             print(f"\n  DAgger Iteration {iteration + 1}/{iterations_per_stage} (beta={beta:.2f})")
 
             new_samples = trainer.collect_dagger_data(env, expert, dagger_episodes, beta=beta, max_steps=stage_max_steps)
-            print(f"    New samples: {new_samples}, Total: {len(trainer.states)}")
+            print(f"    New samples: {new_samples}, Total: {len(trainer.graph_data_list)}")
 
             for epoch in range(train_epochs):
                 loss = trainer.train_epoch()
@@ -657,7 +743,7 @@ def run_direct_training(
         print(f"\nDAgger Iteration {iteration + 1}/{iterations} (beta={beta:.2f})")
         
         new_samples = trainer.collect_dagger_data(env, expert, dagger_episodes, beta=beta, max_steps=max_steps)
-        print(f"  New samples: {new_samples}, Total: {len(trainer.states)}")
+        print(f"  New samples: {new_samples}, Total: {len(trainer.graph_data_list)}")
         
         for epoch in range(train_epochs):
             loss = trainer.train_epoch()

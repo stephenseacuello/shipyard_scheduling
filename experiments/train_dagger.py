@@ -27,6 +27,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import yaml
 from typing import Dict, List, Any, Tuple
+from torch_geometric.data import Batch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -92,8 +93,10 @@ class DAggerTrainer:
             lr=lr, weight_decay=1e-5
         )
 
-        # Aggregated dataset
-        self.states: List[torch.Tensor] = []
+        # Aggregated dataset — store raw graph data, NOT pre-computed embeddings.
+        # This allows the encoder to receive gradients during training,
+        # which is critical for scale transfer (curriculum learning).
+        self.graph_data_list: List[Any] = []  # HeteroData objects
         self.expert_actions: List[Dict[str, int]] = []
 
         # Action key mapping
@@ -160,16 +163,14 @@ class DAggerTrainer:
             obs, info = self.env.reset()
 
             for step in range(max_steps):
-                # Encode state
-                graph_data = self.env.get_graph_data().to(self.device)
-                with torch.no_grad():
-                    state_emb = self.encoder(graph_data)
+                # Store raw graph data (NOT pre-computed embeddings)
+                graph_data = self.env.get_graph_data().cpu()
 
                 # Get expert action
                 expert_action = self.expert.decide(self.env)
 
-                # Store
-                self.states.append(state_emb.cpu())
+                # Store graph data and expert action
+                self.graph_data_list.append(graph_data)
                 self.expert_actions.append(expert_action)
 
                 # Step with expert action
@@ -181,7 +182,7 @@ class DAggerTrainer:
                 if terminated or truncated:
                     break
 
-        print(f"  Collected {len(self.states)} state-action pairs")
+        print(f"  Collected {len(self.graph_data_list)} state-action pairs")
 
     def collect_dagger_data(self, n_episodes: int, beta: float = 0.5, max_steps: int = 1000):
         """
@@ -199,27 +200,40 @@ class DAggerTrainer:
             obs, info = self.env.reset()
 
             for step in range(max_steps):
-                # Encode state
-                graph_data = self.env.get_graph_data().to(self.device)
-                with torch.no_grad():
-                    state_emb = self.encoder(graph_data)
+                # Store raw graph data (NOT pre-computed embeddings)
+                graph_data = self.env.get_graph_data()
 
                 # Get expert action (this is the label we're collecting)
                 expert_action = self.expert.decide(self.env)
 
-                # Store state and expert action
-                self.states.append(state_emb.cpu())
+                # Store graph data and expert action
+                self.graph_data_list.append(graph_data.cpu())
                 self.expert_actions.append(expert_action)
                 new_samples += 1
 
                 # Decide whether to use expert or policy action for execution
                 if random.random() < beta:
-                    # Use expert action
                     action = expert_action
                 else:
-                    # Use policy action
+                    # Use policy action with masking + entity embeddings
                     with torch.no_grad():
-                        policy_action, _, _ = self.policy.get_action(state_emb)
+                        state_emb, block_embs = self.encoder(
+                            graph_data.to(self.device), return_entity_embeddings=True
+                        )
+                        # Apply action mask for valid actions only
+                        env_mask = self.env.get_action_mask()
+                        from agent.action_masking import flatten_env_mask_to_policy_mask
+                        n_cr = len(self.env.entities.get("goliath_cranes", self.env.entities.get("cranes", [])))
+                        pmask = flatten_env_mask_to_policy_mask(
+                            env_mask, len(self.env.entities.get("spmts", [])),
+                            n_cr, self.env.n_blocks
+                        )
+                        tmask = {k: torch.tensor(v, device=self.device) for k, v in pmask.items()}
+                        # Pass entity embeddings to enable AttentionActionHead
+                        entity_embs = block_embs.unsqueeze(0) if block_embs is not None else None
+                        policy_action, _, _ = self.policy.get_action(
+                            state_emb, mask=tmask, entity_embeddings=entity_embs
+                        )
                     action = {k: int(v.item()) for k, v in policy_action.items()}
 
                 # Step environment
@@ -231,11 +245,17 @@ class DAggerTrainer:
                 if terminated or truncated:
                     break
 
-        print(f"  Added {new_samples} new samples, total: {len(self.states)}")
+        print(f"  Added {new_samples} new samples, total: {len(self.graph_data_list)}")
 
-    def train_epoch(self, batch_size: int = 128) -> float:
-        """Train policy on aggregated dataset for one epoch."""
-        n_samples = len(self.states)
+    def train_epoch(self, batch_size: int = 64) -> float:
+        """Train policy AND encoder on aggregated dataset for one epoch.
+
+        Key fix: Re-encodes raw graph data through the GNN encoder during
+        training, so the encoder receives gradients and can adapt its
+        representations. This is critical for curriculum learning across
+        instance sizes.
+        """
+        n_samples = len(self.graph_data_list)
         indices = list(range(n_samples))
         random.shuffle(indices)
 
@@ -247,10 +267,11 @@ class DAggerTrainer:
             if len(batch_indices) < 2:
                 continue
 
-            # Batch states
-            batch_states = torch.cat(
-                [self.states[j] for j in batch_indices], dim=0
+            # Re-encode through GNN encoder (gradients flow to encoder!)
+            batch_graphs = Batch.from_data_list(
+                [self.graph_data_list[j] for j in batch_indices]
             ).to(self.device)
+            batch_states = self.encoder(batch_graphs)
 
             # Get policy distributions
             action_dist, _ = self.policy.forward(batch_states)
@@ -297,8 +318,20 @@ class DAggerTrainer:
             for step in range(max_steps):
                 graph_data = self.env.get_graph_data().to(self.device)
                 with torch.no_grad():
-                    state_emb = self.encoder(graph_data)
-                    action, _, _ = self.policy.get_action(state_emb, deterministic=True)
+                    state_emb, block_embs = self.encoder(graph_data, return_entity_embeddings=True)
+                    # Apply masking + entity embeddings during evaluation
+                    env_mask = self.env.get_action_mask()
+                    from agent.action_masking import flatten_env_mask_to_policy_mask
+                    n_cr = len(self.env.entities.get("goliath_cranes", self.env.entities.get("cranes", [])))
+                    pmask = flatten_env_mask_to_policy_mask(
+                        env_mask, len(self.env.entities.get("spmts", [])),
+                        n_cr, self.env.n_blocks
+                    )
+                    tmask = {k: torch.tensor(v, device=self.device) for k, v in pmask.items()}
+                    entity_embs = block_embs.unsqueeze(0) if block_embs is not None else None
+                    action, _, _ = self.policy.get_action(
+                        state_emb, mask=tmask, entity_embeddings=entity_embs, deterministic=True
+                    )
 
                 action_cpu = {k: int(v.item()) for k, v in action.items()}
                 obs, reward, terminated, truncated, info = self.env.step(action_cpu)
@@ -396,6 +429,7 @@ def main():
         n_suppliers=env.n_suppliers,
         n_inventory=env.n_inventory_nodes,
         n_labor_pools=env.n_labor_pools,
+        entity_dim=hidden_dim,  # Match GNN encoder hidden_dim for attention action heads
     )
 
     expert = RuleBasedScheduler()

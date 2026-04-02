@@ -81,6 +81,20 @@ def _apply_mask(logits: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor
         return logits
     if mask.dtype != torch.bool:
         mask = mask.bool()
+    # Handle size mismatch between attention-head logits (variable n_entities)
+    # and fixed-size masks from flatten_env_mask_to_policy_mask.
+    logit_dim = logits.shape[-1]
+    mask_dim = mask.shape[-1]
+    if logit_dim != mask_dim:
+        if logit_dim < mask_dim:
+            # Attention head produced fewer logits than mask size; truncate mask
+            mask = mask[..., :logit_dim]
+        else:
+            # Attention head produced more logits than mask size; pad mask with False
+            pad_shape = list(mask.shape)
+            pad_shape[-1] = logit_dim - mask_dim
+            pad = torch.zeros(pad_shape, dtype=torch.bool, device=mask.device)
+            mask = torch.cat([mask, pad], dim=-1)
     # Broadcast: mask may be (head_size,) or (batch, head_size)
     return logits.masked_fill(~mask, -20.0)
 

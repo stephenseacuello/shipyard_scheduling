@@ -1,0 +1,4 @@
+config,seed,mip_makespan,mip_tardiness,mip_objective,mip_status,mip_gap,mip_solve_time,edd_makespan,edd_tardiness,edd_blocks_completed,edd_throughput,edd_steps,makespan_gap_pct,tardiness_gap_pct
+small_instance,0,114.0,0.0,57.0,optimal,0.0,301.4245927333832,410.0,0.0,50,0.06402048655569782,781,259.64912280701753,0.0
+small_instance,1,114.0,0.0,57.0,optimal,0.0,300.5910048484802,442.0,0.0,50,0.06165228113440197,811,287.719298245614,0.0
+small_instance,2,114.0,0.0,57.0,optimal,0.0,300.6758677959442,452.0,0.0,50,0.05820721769499418,859,296.49122807017545,0.0

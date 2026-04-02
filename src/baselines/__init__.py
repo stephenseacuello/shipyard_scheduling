@@ -16,6 +16,9 @@ Baselines included:
 from .rule_based import RuleBasedScheduler
 from .myopic_rl import MyopicRLScheduler
 from .siloed_opt import SiloedOptimizationScheduler
+from .random_policy import RandomScheduler
+from .fifo_policy import FIFOScheduler
+from .cpm_scheduler import CPMScheduler
 
 # Optional OR imports (may not be available)
 try:
@@ -34,6 +37,9 @@ __all__ = [
     "RuleBasedScheduler",
     "MyopicRLScheduler",
     "SiloedOptimizationScheduler",
+    "RandomScheduler",
+    "FIFOScheduler",
+    "CPMScheduler",
 ]
 
 if _MIP_AVAILABLE:

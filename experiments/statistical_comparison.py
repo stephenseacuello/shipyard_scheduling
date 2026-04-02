@@ -125,7 +125,7 @@ def run_episode(
 # Agent factory
 # ---------------------------------------------------------------------------
 
-def create_agents(env: HHIShipyardEnv) -> Dict[str, Any]:
+def create_agents(env: HHIShipyardEnv, skip_ga: bool = False) -> Dict[str, Any]:
     """Create all available agents for a given environment."""
     agents = {}
 
@@ -140,14 +140,17 @@ def create_agents(env: HHIShipyardEnv) -> Dict[str, Any]:
         print(f"  MPC not available: {e}")
 
     # GA
-    try:
-        from baselines.ga_scheduler import GAScheduler, GAConfig
-        n_blocks = getattr(env, "n_blocks", 50)
-        n_spmts = getattr(env, "n_spmts", 6)
-        n_cranes = getattr(env, "n_goliath_cranes", getattr(env, "n_cranes", 2))
-        agents["GA"] = GAScheduler(GAConfig(), n_blocks, n_spmts, n_cranes)
-    except Exception as e:
-        print(f"  GA not available: {e}")
+    if not skip_ga:
+        try:
+            from baselines.ga_scheduler import GAScheduler, GAConfig
+            n_blocks = getattr(env, "n_blocks", 50)
+            n_spmts = getattr(env, "n_spmts", 6)
+            n_cranes = getattr(env, "n_goliath_cranes", getattr(env, "n_cranes", 2))
+            agents["GA"] = GAScheduler(GAConfig(), n_blocks, n_spmts, n_cranes)
+        except Exception as e:
+            print(f"  GA not available: {e}")
+    else:
+        print("  GA skipped (--skip-ga)")
 
     return agents
 
@@ -160,6 +163,8 @@ def run_comparison(
     config_paths: List[str],
     n_seeds: int = 10,
     max_steps: int = 5000,
+    disable_extensions: bool = False,
+    skip_ga: bool = False,
 ) -> List[Dict[str, Any]]:
     """Run all agents on all configs with multiple seeds."""
     all_results = []
@@ -172,9 +177,12 @@ def run_comparison(
 
         with open(config_path, "r") as f:
             cfg = yaml.safe_load(f)
+
+        if disable_extensions:
+            cfg.pop("extensions", None)
         env = HHIShipyardEnv(cfg)
 
-        agents = create_agents(env)
+        agents = create_agents(env, skip_ga=skip_ga)
 
         for agent_name, agent in agents.items():
             print(f"\n  Agent: {agent_name}")
@@ -318,14 +326,21 @@ def main():
     parser.add_argument("--max-steps", type=int, default=2000)
     parser.add_argument("--output", type=str,
                         default=os.path.join(PROJECT_ROOT, "data", "statistical_comparison.csv"))
+    parser.add_argument("--no-extensions", action="store_true",
+                        help="Disable all stochastic simulation extensions (deterministic mode)")
+    parser.add_argument("--skip-ga", action="store_true",
+                        help="Skip GA agent (very slow on large instances)")
     args = parser.parse_args()
 
     print("Statistical Comparison of Scheduling Agents")
     print(f"Configs: {args.configs}")
     print(f"Seeds: {args.seeds}")
     print(f"Max steps: {args.max_steps}")
+    print(f"Extensions: {'OFF' if args.no_extensions else 'ON'}")
 
-    results = run_comparison(args.configs, n_seeds=args.seeds, max_steps=args.max_steps)
+    results = run_comparison(args.configs, n_seeds=args.seeds, max_steps=args.max_steps,
+                             disable_extensions=args.no_extensions,
+                             skip_ga=args.skip_ga)
 
     # Save raw results
     os.makedirs(os.path.dirname(args.output), exist_ok=True)

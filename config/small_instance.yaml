@@ -12,3 +12,11 @@ n_ships: 1
 n_blocks_per_ship: 50
 
 max_time: 2000
+
+# Stochastic simulation extensions
+extensions:
+  enable_spatial: true
+  enable_shifts: true
+  enable_weather: true
+  labor_leveling: true
+  duration_uncertainty: true

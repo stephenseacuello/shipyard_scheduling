@@ -109,7 +109,26 @@ class HeterogeneousGNNEncoder(nn.Module):
         self.norms = nn.ModuleList([nn.LayerNorm(hidden_dim) for _ in range(num_layers)])
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, data) -> torch.Tensor:
+        # Attention-weighted pooling for block nodes (scale-invariant)
+        self.block_attn = nn.Linear(hidden_dim, 1)
+
+        # LayerNorm on concatenated output for cross-scale stability
+        output_dim = hidden_dim * len(self.node_types)
+        self.output_norm = nn.LayerNorm(output_dim)
+
+    def forward(self, data, return_entity_embeddings: bool = False):
+        """Forward pass through the GNN encoder.
+
+        Args:
+            data: HeteroData or Batch of HeteroData graphs.
+            return_entity_embeddings: If True, return (pooled_state, block_embeddings)
+                where block_embeddings are per-block node embeddings after message passing.
+                Used to feed AttentionActionHead for variable-length action selection.
+
+        Returns:
+            If return_entity_embeddings=False: pooled_state tensor (backward compatible)
+            If return_entity_embeddings=True: (pooled_state, block_embeddings) tuple
+        """
         x_dict = {
             "block": self.block_proj(data["block"].x),
             "spmt": self.spmt_proj(data["spmt"].x),
@@ -131,16 +150,40 @@ class HeterogeneousGNNEncoder(nn.Module):
                 k: norm(self.dropout(F.relu(x_dict_new.get(k, x_dict[k]))) + x_dict[k])
                 for k in x_dict
             }
-        # Global pooling: average per node type then concatenate
+        # Global pooling: attention-weighted for blocks, mean for others
         pooled = []
         for node_type in self.node_types:
             if node_type in x_dict and node_type in data.node_types and data[node_type].x.shape[0] > 0:
-                pooled.append(global_mean_pool(x_dict[node_type], data[node_type].batch))
+                if node_type == "block":
+                    # Attention-weighted pooling for blocks (scale-invariant)
+                    block_x = x_dict["block"]  # [n_blocks, hidden_dim]
+                    attn_logits = self.block_attn(block_x)  # [n_blocks, 1]
+                    batch_idx = data["block"].batch
+                    # Softmax within each graph in the batch
+                    attn_weights = torch.zeros_like(attn_logits)
+                    for b in batch_idx.unique():
+                        mask = batch_idx == b
+                        attn_weights[mask] = F.softmax(attn_logits[mask], dim=0)
+                    weighted = block_x * attn_weights  # [n_blocks, hidden_dim]
+                    # Scatter-add weighted features per graph
+                    batch_size = batch_idx.max().item() + 1
+                    out = torch.zeros(batch_size, block_x.shape[1], device=block_x.device)
+                    out.scatter_add_(0, batch_idx.unsqueeze(1).expand_as(weighted), weighted)
+                    pooled.append(out)
+                else:
+                    pooled.append(global_mean_pool(x_dict[node_type], data[node_type].batch))
             elif node_type in x_dict:
                 pooled.append(torch.zeros((1, x_dict[node_type].shape[1]), device=next(iter(x_dict.values())).device))
             else:
                 pooled.append(torch.zeros((1, self.block_proj.out_features), device=next(iter(x_dict.values())).device))
-        return torch.cat(pooled, dim=-1)
+        pooled_state = self.output_norm(torch.cat(pooled, dim=-1))
+
+        if return_entity_embeddings:
+            # Return per-block embeddings for AttentionActionHead
+            block_embs = x_dict.get("block", None)  # (n_blocks, hidden_dim)
+            return pooled_state, block_embs
+
+        return pooled_state
 
 
 class RelationTypeEmbedding(nn.Module):

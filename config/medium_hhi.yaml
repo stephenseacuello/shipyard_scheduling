@@ -7,3 +7,6 @@ n_ships: 2
 n_blocks_per_ship: 100
 
 max_time: 15000
+
+# Stochastic extensions inherited from hhi_ulsan.yaml via inherit_from
+# Override here only if you want to disable specific extensions for this config

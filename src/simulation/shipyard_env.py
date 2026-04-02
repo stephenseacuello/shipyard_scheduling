@@ -44,6 +44,13 @@ from .entities import (
 )
 from .degradation import WienerDegradationModel
 from .precedence import is_predecessor_complete
+from .environment_extensions import (
+    init_extensions, update_extensions,
+    get_effective_dt, get_weather_state,
+    check_crane_reach, check_route_available, apply_congestion_delay,
+    check_labor_available, apply_labor_penalty,
+    apply_duration_noise,
+)
 
 
 class HHIShipyardEnv(gym.Env):
@@ -263,6 +270,9 @@ class HHIShipyardEnv(gym.Env):
             failure_threshold=deg_config.get("failure_threshold", 20.0),
         )
         self.max_time = float(config.get("max_time", 50000))
+
+        # Initialize environment extensions (spatial, shifts, weather, labor leveling)
+        init_extensions(self)
 
     # ------------------------------------------------------------------
     # Facility helpers
@@ -691,6 +701,12 @@ class HHIShipyardEnv(gym.Env):
             queue = self.facility_queues.get(fac_name, [])
 
             while queue and len(self.facility_processing.get(fac_name, [])) < capacity:
+                # Labor constraint: check if enough workers are available
+                block = self._get_block(queue[0])
+                stage_name = block.current_stage.name if hasattr(block.current_stage, "name") else ""
+                if not check_labor_available(self, stage_name):
+                    break  # Not enough workers — block stays in queue
+
                 block_id = queue.pop(0)
                 self.facility_processing[fac_name].append(block_id)
 
@@ -706,6 +722,13 @@ class HHIShipyardEnv(gym.Env):
                         mean=np.log(mean * multiplier),
                         sigma=std / mean
                     ))
+                # Apply duration uncertainty (stochastic noise at task start)
+                stage_name = block.current_stage.name if hasattr(block.current_stage, "name") else ""
+                proc_time = apply_duration_noise(self, proc_time, stage_name)
+
+                # Apply labor penalty (understaffing increases processing time)
+                proc_time = apply_labor_penalty(self, proc_time, stage_name)
+
                 self.facility_remaining_time[fac_name][block_id] = proc_time
 
                 # Update block
@@ -728,9 +751,13 @@ class HHIShipyardEnv(gym.Env):
         completed_blocks: List[Tuple[str, str]] = []
 
         for fac_name, remaining_times in list(self.facility_remaining_time.items()):
+            # Apply extensions: shifts, weather, labor affect effective processing rate
+            effective_dt = get_effective_dt(self, fac_name)
+            actual_dt = dt * effective_dt
+
             finished_ids: List[str] = []
             for block_id, remaining in list(remaining_times.items()):
-                new_remaining = remaining - dt
+                new_remaining = remaining - actual_dt
                 self.facility_remaining_time[fac_name][block_id] = new_remaining
 
                 # Advance sub-stage tracking if enabled
@@ -892,6 +919,9 @@ class HHIShipyardEnv(gym.Env):
 
     def _advance_simulation(self, dt: float = 1.0) -> None:
         """Advance simulation by dt hours."""
+        # Update extensions (weather transitions, etc.)
+        update_extensions(self, dt)
+
         self._assign_blocks_to_facilities()
         self._update_processing(dt)
         self._update_ship_processing(dt)  # Ship-level stages 8-10
@@ -1090,7 +1120,7 @@ class HHIShipyardEnv(gym.Env):
         if request_idx >= len(self.transport_requests):
             return 0.0
 
-        request = self.transport_requests.pop(request_idx)
+        request = self.transport_requests[request_idx]
         block_id = request["block_id"]
         destination = request["destination"]
         block = self._get_block(block_id)
@@ -1098,12 +1128,28 @@ class HHIShipyardEnv(gym.Env):
         if spmt.status != SPMTStatus.IDLE or spmt.current_load is not None:
             return 0.0
 
+        # Spatial constraint: check route capacity before dispatching
+        if not check_route_available(self, block.location, destination):
+            return 0.0
+
+        # All checks passed — remove request from list
+        self.transport_requests.pop(request_idx)
+
         # Calculate travel (simplified)
         travel_to_block = self.shipyard.get_travel_time(spmt.current_location, block.location)
         travel_to_dest = self.shipyard.get_travel_time(block.location, destination)
+
+        # Spatial constraint: apply congestion delay to travel times
+        travel_to_block = apply_congestion_delay(self, travel_to_block, spmt.current_location, block.location)
+        travel_to_dest = apply_congestion_delay(self, travel_to_dest, block.location, destination)
+
         empty_distance = travel_to_block
 
         self.metrics["empty_travel_distance"] += empty_distance
+
+        # Track SPMT busy time (empty travel + loaded travel)
+        total_travel_time = travel_to_block + travel_to_dest
+        self.metrics["spmt_busy_time"] = self.metrics.get("spmt_busy_time", 0.0) + total_travel_time
 
         # Execute transport
         spmt.status = SPMTStatus.TRAVELING_LOADED
@@ -1147,6 +1193,11 @@ class HHIShipyardEnv(gym.Env):
         if crane.assigned_dock != ship.assigned_dock:
             return 0.0
 
+        # Spatial constraint: check crane rail reach
+        dock_idx = int(ship.assigned_dock) if str(ship.assigned_dock).isdigit() else 0
+        if not check_crane_reach(self, crane_idx, dock_idx):
+            return 0.0
+
         # Check weight capacity
         if not crane.can_lift(block.weight):
             return 0.0
@@ -1157,6 +1208,10 @@ class HHIShipyardEnv(gym.Env):
         # Execute erection
         crane.status = GoliathCraneStatus.LIFTING
         crane.current_block = block_id
+
+        # Track crane busy time (lift duration ~2h per block)
+        lift_duration = 2.0  # hours
+        self.metrics["crane_busy_time"] = self.metrics.get("crane_busy_time", 0.0) + lift_duration
 
         block.status = BlockStatus.IN_ERECTION
         block.current_stage = HHIProductionStage.ERECTION

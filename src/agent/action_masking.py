@@ -92,8 +92,9 @@ def flatten_env_mask_to_policy_mask(
         n_lift = min(crane_dispatch.shape[1], max_requests)
         lift_mask[:n_lift] = crane_dispatch.any(axis=0)[:n_lift]
 
-    # Equipment head: same as maintenance mask
-    equipment_mask = np.array(maint_mask, dtype=bool)
+    # Equipment head: pad maintenance mask to policy's n_spmts + n_cranes
+    equipment_mask = np.zeros(n_spmts + n_cranes, dtype=bool)
+    equipment_mask[:len(maint_mask)] = np.array(maint_mask, dtype=bool)[:n_spmts + n_cranes]
 
     result = {
         "action_type": np.array(at_mask, dtype=bool),

@@ -34,7 +34,7 @@ plt.rcParams.update({
 
 def generate_shipyard_layout():
     """Generate HHI Ulsan shipyard layout figure with real dry dock specs."""
-    fig, ax = plt.subplots(1, 1, figsize=(10, 6.5))
+    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
 
     # Background
     ax.set_facecolor("#f0f4f8")
@@ -48,7 +48,7 @@ def generate_shipyard_layout():
     )
     ax.add_patch(water)
     ax.text(1160, 340, "MIPO\nBAY", ha="center", va="center",
-            fontsize=8, color="#2980b9", fontstyle="italic", fontweight="bold")
+            fontsize=10, color="#2980b9", fontstyle="italic", fontweight="bold")
 
     # Zone backgrounds
     zones = [
@@ -64,7 +64,7 @@ def generate_shipyard_layout():
             facecolor=color, edgecolor="#bdc3c7", linewidth=0.5, linestyle="--"
         )
         ax.add_patch(zone_bg)
-        ax.text(x + 5, y + 8, label, fontsize=6, color="#7f8c8d",
+        ax.text(x + 5, y + 8, label, fontsize=8, color="#7f8c8d",
                 va="top", fontstyle="italic")
 
     # Facilities
@@ -98,20 +98,20 @@ def generate_shipyard_layout():
         )
         ax.add_patch(rect)
         ax.text(x + w/2, y + h/2, label, ha="center", va="center",
-                fontsize=6, color="white", fontweight="bold")
+                fontsize=7.5, color="white", fontweight="bold")
 
-    # Dry Docks with real dimensions
+    # Dry Docks with real dimensions — boxes sized to fit text
     docks = [
-        (895, 10, 130, 48, "Dock 1\n390m × 80m\nLNG", "#e74c3c", "GC01, GC02"),
-        (895, 66, 155, 50, "Dock 2\n500m × 80m", "#e74c3c", "GC03"),
-        (895, 124, 195, 62, "Dock 3 (MEGA)\n672m × 92m\n1M DWT", "#c0392b", "GC04, GC05"),
-        (895, 194, 130, 44, "Dock 4\n390m 150kDWT", "#e74c3c", "GC06"),
-        (895, 246, 105, 38, "Dock 5\n300m 70kDWT", "#c0392b", "GC07"),
-        (895, 292, 95, 34, "Dock 6: 280m\nNaval", "#95a5a6", ""),
-        (895, 334, 90, 32, "Dock 7: 260m\nNaval", "#95a5a6", ""),
-        (895, 374, 115, 42, "Dock 8\n350m VLCC", "#922b21", "GC08"),
-        (895, 424, 108, 38, "Dock 9\n320m VLCC", "#922b21", ""),
-        (895, 470, 155, 52, "H-Dock\n490m × 115m\nOffshore", "#8e44ad", "GC09"),
+        (895, 10, 140, 52, "Dock 1\n390m × 80m\nLNG", "#e74c3c", "GC01, GC02"),
+        (895, 70, 160, 50, "Dock 2\n500m × 80m", "#e74c3c", "GC03"),
+        (895, 128, 200, 62, "Dock 3 (MEGA)\n672m × 92m\n1M DWT", "#c0392b", "GC04, GC05"),
+        (895, 198, 140, 44, "Dock 4\n390m 150kDWT", "#e74c3c", "GC06"),
+        (895, 250, 120, 40, "Dock 5\n300m 70kDWT", "#c0392b", "GC07"),
+        (895, 298, 110, 38, "Dock 6\n280m Naval", "#95a5a6", ""),
+        (895, 344, 110, 38, "Dock 7\n260m Naval", "#95a5a6", ""),
+        (895, 390, 125, 42, "Dock 8\n350m VLCC", "#922b21", "GC08"),
+        (895, 440, 120, 40, "Dock 9\n320m VLCC", "#922b21", ""),
+        (895, 488, 160, 52, "H-Dock\n490m × 115m\nOffshore", "#8e44ad", "GC09"),
     ]
 
     for x, y, w, h, label, color, cranes in docks:
@@ -121,16 +121,16 @@ def generate_shipyard_layout():
         )
         ax.add_patch(rect)
         ax.text(x + w/2, y + h/2, label, ha="center", va="center",
-                fontsize=5, color="white", fontweight="bold")
+                fontsize=6.5, color="white", fontweight="bold")
         if cranes:
-            ax.text(x + w + 3, y + h/2, cranes, fontsize=4.5,
+            ax.text(x + w + 3, y + h/2, cranes, fontsize=6,
                     color="#e74c3c", va="center", fontstyle="italic")
 
     # Outfitting Quays
     quays = [
-        (895, 540, 120, 35, "Outfitting Quay 1", "#1abc9c"),
-        (895, 583, 110, 33, "Outfitting Quay 2", "#1abc9c"),
-        (895, 624, 100, 30, "Outfitting Quay 3", "#1abc9c"),
+        (895, 555, 120, 35, "Outfitting Quay 1", "#1abc9c"),
+        (895, 598, 110, 33, "Outfitting Quay 2", "#1abc9c"),
+        (895, 639, 100, 30, "Outfitting Quay 3", "#1abc9c"),
     ]
     for x, y, w, h, label, color in quays:
         rect = mpatches.FancyBboxPatch(
@@ -139,7 +139,7 @@ def generate_shipyard_layout():
         )
         ax.add_patch(rect)
         ax.text(x + w/2, y + h/2, label, ha="center", va="center",
-                fontsize=5.5, color="white", fontweight="bold")
+                fontsize=7, color="white", fontweight="bold")
 
     # Production flow arrows
     arrow_style = dict(arrowstyle="-|>", color="#2c3e50", lw=0.8, mutation_scale=8)
@@ -175,16 +175,16 @@ def generate_shipyard_layout():
     )
     ax.add_patch(spmt_rect)
     ax.text(100, 422, "SPMT Depot\n24 SPMTs + 8 DCTs", ha="center", va="center",
-            fontsize=5.5, color="white", fontweight="bold")
+            fontsize=7, color="white", fontweight="bold")
 
     # Sea Trials
     ax.text(1160, 660, "→ Sea Trials\n(Ulsan Bay)", ha="center",
-            fontsize=7, color="#2980b9", fontstyle="italic")
+            fontsize=9, color="#2980b9", fontstyle="italic")
 
     # Title
     ax.set_title("HD Hyundai Heavy Industries — Ulsan Shipyard Layout\n"
                  "World's Largest Shipyard · 4km Coastline · 1,780 Acres · 10 Dry Docks · 9 Goliath Cranes",
-                 fontsize=11, fontweight="bold", pad=10)
+                 fontsize=12, fontweight="bold", pad=12)
 
     ax.set_aspect("equal")
     ax.axis("off")
@@ -200,7 +200,8 @@ def generate_shipyard_layout():
         mpatches.Patch(facecolor="#8e44ad", label="H-Dock (Offshore)"),
     ]
     ax.legend(handles=legend_items, loc="lower left", ncol=4,
-              frameon=True, fancybox=True, fontsize=6, framealpha=0.9)
+              frameon=True, fancybox=True, fontsize=8, framealpha=0.9,
+              borderpad=0.8, columnspacing=1.5)
 
     fig.savefig(os.path.join(FIGURE_DIR, "shipyard_layout.pdf"))
     fig.savefig(os.path.join(FIGURE_DIR, "shipyard_layout.png"), dpi=300)
@@ -227,7 +228,7 @@ def generate_curriculum_learning_curve():
     medium_throughput = [0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0003, 0.0100, 0.0140, 0.0393, 0.0405, 0.0385]
     medium_loss = [1.7887, 2.0864, 2.2062, 2.2832, 2.3411, 2.4232, 2.4959, 2.5677, 2.6440, 2.7062, 2.7722]
 
-    fig, axes = plt.subplots(2, 3, figsize=(10, 5.5), sharex="col")
+    fig, axes = plt.subplots(2, 3, figsize=(10, 6), sharex="col")
 
     # Top row: throughput
     colors = ["#3498db", "#27ae60", "#e74c3c"]
@@ -253,17 +254,22 @@ def generate_curriculum_learning_curve():
             ax.set_ylabel("Training Loss")
         ax.grid(True, alpha=0.3)
 
-        # Annotate trend
+        # Annotate trend — position inside the plot area to avoid cutoff
         if loss[-1] < loss[0]:
-            ax.annotate("converging ↓", xy=(10, loss[-1]), fontsize=6,
-                        color="green", ha="right")
+            # Place label in upper-right area of the subplot
+            y_mid = (loss[0] + loss[-1]) / 2
+            ax.text(7, y_mid, "converging \u2193", fontsize=7, color="green",
+                    fontweight="bold", ha="center",
+                    bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="green", alpha=0.7))
         else:
-            ax.annotate("diverging ↑", xy=(10, loss[-1]), fontsize=6,
-                        color="red", ha="right")
+            y_mid = (loss[0] + loss[-1]) / 2
+            ax.text(3, y_mid, "diverging \u2191", fontsize=7, color="red",
+                    fontweight="bold", ha="center",
+                    bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="red", alpha=0.7))
 
     fig.suptitle("Curriculum DAgger: 3-Stage Training (19.8h, Apple M1 Pro CPU)",
                  fontsize=11, fontweight="bold")
-    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    fig.tight_layout(rect=[0, 0.02, 1, 0.95])
     fig.savefig(os.path.join(FIGURE_DIR, "curriculum_dagger.pdf"))
     fig.savefig(os.path.join(FIGURE_DIR, "curriculum_dagger.png"), dpi=300)
     plt.close(fig)
@@ -272,7 +278,7 @@ def generate_curriculum_learning_curve():
 
 def generate_cross_config_comparison():
     """Generate cross-config agent comparison bar chart with DAgger."""
-    fig, axes = plt.subplots(1, 2, figsize=(8, 3.5))
+    fig, axes = plt.subplots(1, 2, figsize=(9, 4))
 
     agents = ["Expert\n(EDD)", "MPC\n(CP-SAT)", "GA", "DAgger"]
     colors = ["#27ae60", "#3498db", "#e67e22", "#9b59b6"]
@@ -303,10 +309,15 @@ def generate_cross_config_comparison():
                   yerr=medium_ci, capsize=4, edgecolor="white", linewidth=1)
     ax.set_title("Medium HHI (200 blocks)", fontweight="bold")
     ax.set_ylabel("Throughput")
-    for bar, b in zip(bars, medium_blocks):
-        ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.005,
+    for i, (bar, b) in enumerate(zip(bars, medium_blocks)):
+        # Stagger label positions to avoid overlap on short bars
+        y_offset = 0.005
+        if b < 15:
+            y_offset = 0.008 + i * 0.004  # Stagger small-bar labels
+        ax.text(bar.get_x() + bar.get_width()/2,
+                max(bar.get_height(), 0.002) + y_offset,
                 f"{b:.0f} blocks", ha="center", fontsize=7, color="#555")
-    ax.set_ylim(0, 0.14)
+    ax.set_ylim(0, 0.15)
     ax.grid(True, axis="y", alpha=0.3)
 
     fig.suptitle("Cross-Instance Statistical Comparison (5 seeds, Mann-Whitney U)",
@@ -356,7 +367,7 @@ def generate_calibration_scatter():
 
 def generate_entropy_collapse():
     """Generate entropy collapse figure across training epochs."""
-    fig, axes = plt.subplots(1, 2, figsize=(8, 3.5))
+    fig, axes = plt.subplots(1, 2, figsize=(9, 4))
 
     epochs = list(range(1, 21))
 
@@ -372,11 +383,11 @@ def generate_entropy_collapse():
     ax.set_xlabel("Training Epoch")
     ax.set_ylabel("Policy Entropy")
     ax.set_title("Entropy Over Training", fontweight="bold")
-    ax.legend(fontsize=7)
+    ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
-    ax.annotate("Complete collapse\n(epoch 5)", xy=(5, 0.0), xytext=(10, 0.8),
-                arrowprops=dict(arrowstyle="->", color="#e74c3c"),
-                fontsize=7, color="#e74c3c")
+    ax.annotate("Complete collapse\n(epoch 5)", xy=(5, 0.0), xytext=(11, 1.0),
+                arrowprops=dict(arrowstyle="->", color="#e74c3c", lw=1.2),
+                fontsize=8, color="#e74c3c", fontweight="bold")
 
     # Throughput comparison
     ppo_throughput = [0.040, 0.035, 0.028, 0.022, 0.019, 0.016, 0.014, 0.012,
@@ -394,10 +405,10 @@ def generate_entropy_collapse():
     ax.set_xlabel("Training Epoch")
     ax.set_ylabel("Throughput")
     ax.set_title("Throughput Over Training", fontweight="bold")
-    ax.legend(fontsize=7, loc="center right")
+    ax.legend(fontsize=8, loc="center right")
     ax.grid(True, alpha=0.3)
 
-    fig.suptitle("Entropy Collapse in Hierarchical Action Spaces", fontsize=10, fontweight="bold")
+    fig.suptitle("Entropy Collapse in Hierarchical Action Spaces", fontsize=11, fontweight="bold")
     fig.tight_layout(rect=[0, 0, 1, 0.92])
     fig.savefig(os.path.join(FIGURE_DIR, "entropy_collapse.pdf"))
     fig.savefig(os.path.join(FIGURE_DIR, "entropy_collapse.png"), dpi=300)
@@ -407,7 +418,7 @@ def generate_entropy_collapse():
 
 def generate_method_comparison():
     """Generate overall method comparison figure."""
-    fig, ax = plt.subplots(1, 1, figsize=(7, 4))
+    fig, ax = plt.subplots(1, 1, figsize=(8, 4.5))
 
     methods = ["PPO", "SAC", "BC", "GAIL", "DAgger\n(direct)", "DAgger\n(curriculum)", "DAgger\n(deployed)"]
     vs_expert = [0.4, 28.7, 85.2, 78.4, 97.0, 100.0, 118.0]
@@ -417,16 +428,16 @@ def generate_method_comparison():
     ax.axvline(x=100, color="gray", linestyle="--", linewidth=0.8, alpha=0.5)
     ax.set_xlabel("% of Expert Throughput")
     ax.set_title("Method Comparison on Small Instance (50 blocks)", fontweight="bold")
-    ax.set_xlim(0, 115)
+    ax.set_xlim(0, 130)
     ax.grid(True, axis="x", alpha=0.3)
 
     for bar, val in zip(bars, vs_expert):
-        ax.text(bar.get_width() + 1, bar.get_y() + bar.get_height()/2,
-                f"{val:.1f}%", va="center", fontsize=8, fontweight="bold")
+        ax.text(bar.get_width() + 1.5, bar.get_y() + bar.get_height()/2,
+                f"{val:.1f}%", va="center", fontsize=9, fontweight="bold")
 
     # Category labels
-    ax.text(2, -0.7, "RL Methods", fontsize=7, color="#e74c3c", fontstyle="italic")
-    ax.text(60, 1.3, "Imitation Learning", fontsize=7, color="#3498db", fontstyle="italic")
+    ax.text(2, -0.7, "RL Methods", fontsize=8, color="#e74c3c", fontstyle="italic")
+    ax.text(60, 1.3, "Imitation Learning", fontsize=8, color="#3498db", fontstyle="italic")
 
     fig.tight_layout()
     fig.savefig(os.path.join(FIGURE_DIR, "method_comparison.pdf"))
@@ -437,7 +448,7 @@ def generate_method_comparison():
 
 def generate_scaling_analysis():
     """Generate throughput scaling analysis across instance sizes."""
-    fig, axes = plt.subplots(1, 2, figsize=(8, 3.5))
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4.5))
 
     configs = ["Tiny\n(10)", "Small\n(50)", "Medium\n(200)", "HHI Plate\n(1600)"]
     n_blocks = [10, 50, 200, 1600]
@@ -462,7 +473,7 @@ def generate_scaling_analysis():
     ax.set_xticklabels(configs)
     ax.set_ylabel("Throughput (blocks/step)")
     ax.set_title("Throughput by Instance Size", fontweight="bold")
-    ax.legend(fontsize=7)
+    ax.legend(fontsize=8)
     ax.grid(True, axis="y", alpha=0.3)
 
     # Right: Expert advantage ratio
@@ -473,19 +484,95 @@ def generate_scaling_analysis():
     ax.axhline(y=1.0, color="gray", linestyle="--", linewidth=0.8, alpha=0.5)
     ax.set_ylabel("Expert Advantage Ratio")
     ax.set_title("Expert Dominance at Scale", fontweight="bold")
-    ax.legend(fontsize=7)
+    ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
+    # Set ylim with headroom so annotations don't overlap title
+    max_ratio = max(expert_advantage_mpc)
+    ax.set_ylim(0, max_ratio * 1.3)
     for i, v in enumerate(expert_advantage_mpc):
         ax.annotate(f"{v:.1f}x", (i, v), textcoords="offset points",
-                    xytext=(0, 8), ha="center", fontsize=7, fontweight="bold")
+                    xytext=(0, 10), ha="center", fontsize=8, fontweight="bold")
 
     fig.suptitle("Scaling Analysis: Agent Performance Across Instance Sizes",
-                 fontsize=10, fontweight="bold")
-    fig.tight_layout(rect=[0, 0, 1, 0.92])
+                 fontsize=11, fontweight="bold")
+    fig.tight_layout(rect=[0, 0, 1, 0.93])
     fig.savefig(os.path.join(FIGURE_DIR, "scaling_analysis.pdf"))
     fig.savefig(os.path.join(FIGURE_DIR, "scaling_analysis.png"), dpi=300)
     plt.close(fig)
     print("Generated: scaling_analysis.pdf/png")
+
+
+def generate_stochastic_impact():
+    """Generate deterministic vs stochastic comparison figure."""
+    import csv
+
+    data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+    stoch_path = os.path.join(data_dir, "statistical_comparison_stochastic.csv")
+    det_path = os.path.join(data_dir, "statistical_comparison_deterministic.csv")
+
+    def load_results(path):
+        """Load CSV results grouped by (config, agent) -> list of throughput."""
+        from collections import defaultdict
+        grouped = defaultdict(list)
+        if not os.path.exists(path):
+            return grouped
+        with open(path) as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                key = (row["config"], row["agent"])
+                grouped[key].append(float(row["throughput"]))
+        return grouped
+
+    stoch = load_results(stoch_path)
+    det = load_results(det_path)
+
+    if not stoch or not det:
+        print("SKIPPED: stochastic_impact (need both stochastic + deterministic CSV files)")
+        return
+
+    # Get common keys
+    common_keys = sorted(set(stoch.keys()) & set(det.keys()))
+    if not common_keys:
+        print("SKIPPED: stochastic_impact (no common config/agent pairs)")
+        return
+
+    fig, ax = plt.subplots(1, 1, figsize=(9, 5))
+
+    labels = [f"{agent}\n({cfg})" for cfg, agent in common_keys]
+    det_means = [np.mean(det[k]) for k in common_keys]
+    stoch_means = [np.mean(stoch[k]) for k in common_keys]
+    det_stds = [np.std(det[k]) for k in common_keys]
+    stoch_stds = [np.std(stoch[k]) for k in common_keys]
+
+    x = np.arange(len(labels))
+    w = 0.35
+
+    ax.bar(x - w/2, det_means, w, yerr=det_stds, capsize=4,
+           color="#3498db", alpha=0.85, label="Deterministic", edgecolor="white")
+    ax.bar(x + w/2, stoch_means, w, yerr=stoch_stds, capsize=4,
+           color="#e74c3c", alpha=0.85, label="Stochastic (all extensions)", edgecolor="white")
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, fontsize=8)
+    ax.set_ylabel("Throughput (blocks/step)")
+    ax.set_title("Impact of Stochastic Simulation Extensions on Agent Performance",
+                 fontweight="bold")
+    ax.legend(fontsize=9)
+    ax.grid(True, axis="y", alpha=0.3)
+
+    # Annotate percentage change
+    for i, (d, s) in enumerate(zip(det_means, stoch_means)):
+        if d > 0:
+            pct = (s - d) / d * 100
+            color = "#27ae60" if pct >= 0 else "#e74c3c"
+            ax.text(i, max(d, s) + 0.003, f"{pct:+.1f}%", ha="center",
+                    fontsize=7, color=color, fontweight="bold")
+
+    fig.tight_layout()
+    fig.savefig(os.path.join(FIGURE_DIR, "stochastic_impact.pdf"))
+    fig.savefig(os.path.join(FIGURE_DIR, "stochastic_impact.png"), dpi=300)
+    plt.close(fig)
+    print("Generated: stochastic_impact.pdf/png")
 
 
 if __name__ == "__main__":
@@ -496,4 +583,5 @@ if __name__ == "__main__":
     generate_entropy_collapse()
     generate_method_comparison()
     generate_scaling_analysis()
+    generate_stochastic_impact()
     print(f"\nAll figures saved to {FIGURE_DIR}/")

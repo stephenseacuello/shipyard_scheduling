@@ -17,6 +17,7 @@
 \usetikzlibrary{shapes,arrows.meta,positioning,fit,calc,decorations.pathreplacing}
 \usepackage{xcolor}
 \usepackage{fontawesome5}
+\usepackage[normalem]{ulem}
 
 % Custom colors
 \definecolor{hhi}{RGB}{0, 82, 136}
@@ -81,7 +82,7 @@ Today, this scheduling is done \textbf{manually} --- by experienced planners usi
     \setlength\itemsep{1em}
     \item \textbf{Built a full simulation} of HHI Ulsan --- 200 blocks, 10 docks, 9 cranes, 24 SPMTs, with NSRP-calibrated processing times
     \item \textbf{Discovered entropy collapse} --- PPO/SAC fail catastrophically in hierarchical masked action spaces (entropy $\to$ 0 by epoch 5)
-    \item \textbf{Solved it with DAgger} --- imitation learning achieves \textbf{118\% of expert} on 50-block instances, bypassing the exploration problem entirely
+    \item \textbf{Solved it with DAgger} --- imitation learning achieves \textbf{97.0\% $\pm$ 2.5\%} of expert (10-seed validation), bypassing the exploration problem entirely
     \item \textbf{Exposed a scalability wall} --- all methods (RL, OR, imitation) fail to scale beyond 200 blocks; simple EDD dispatch remains king at scale
 \end{enumerate}
 \end{frame}
@@ -254,8 +255,8 @@ Each stage: $\beta$ anneals $0.8 \to 0.2$\\
 {\small (expert $\to$ student control)}
 
 \vspace{0.8em}
-{\color{success}\textbf{Small instance: 118\% of expert}}\\
-{\small DAgger learns error recovery absent from EDD rule}
+{\color{success}\textbf{Small instance: 97.0\% $\pm$ 2.5\% of expert}}\\
+{\small 10-seed validation; best config reaches 100.5\% via error recovery}
 \end{columns}
 \end{frame}
 
@@ -338,22 +339,68 @@ PPO & 0.4\% & {\color{danger}\faTimesCircle} \\
 SAC & 28.7\% & {\color{danger}\faTimesCircle} \\
 BC & 85.2\% & {\color{muted}\faMinusCircle} \\
 GAIL & 78.4\% & {\color{muted}\faMinusCircle} \\
-\textbf{DAgger} & \textbf{118\%} & {\color{success}\faCheckCircle} \\
+\textbf{DAgger} & \textbf{97.0\% $\pm$ 2.5\%} & {\color{success}\faCheckCircle} \\
 \bottomrule
 \end{tabular}
 
 \vspace{1em}
-DAgger \textit{exceeds} expert by learning error recovery behaviors the rule-based EDD expert never exhibits.
+DAgger approaches expert-level performance by learning from demonstrations; best single config (100.5\%) suggests error recovery behaviors the rule-based EDD expert never exhibits.
 
 \vspace{0.5em}
-{\small\color{muted} 10-seed validation: $97.0\% \pm 2.5\%$ (excluding 1 outlier)}
+{\small\color{muted} 10-seed validation: $97.0\% \pm 2.5\%$ (excluding 1 statistical outlier, Grubbs $p<0.05$)}
 \end{columns}
+\end{frame}
+
+%--------------------------------------------------------------
+% SLIDE: Oracle gap
+%--------------------------------------------------------------
+\begin{frame}{Result 2: Massive Optimality Gap --- Room to Improve}
+
+\begin{columns}[T]
+\column{0.5\textwidth}
+\textbf{Oracle MIP (static scheduling)}
+
+\vspace{0.5em}
+\begin{tabular}{lccc}
+\toprule
+& Blocks & Makespan & Gap \\
+\midrule
+MIP (tiny) & 10 & 59 & --- \\
+EDD (tiny) & 10 & 134 & +127\% \\
+\midrule
+MIP (small) & 50 & 114 & --- \\
+EDD (small) & 50 & 447 & \textbf{+281\%} \\
+\bottomrule
+\end{tabular}
+
+\vspace{0.5em}
+{\small PuLP/CBC, proven optimal, 3 seeds. Gap \textit{grows} with scale.}
+
+\column{0.5\textwidth}
+\textbf{Extended baselines (small, 50 blocks)}
+
+\vspace{0.5em}
+\begin{tabular}{lcc}
+\toprule
+Agent & vs Expert & Time \\
+\midrule
+Expert & 100\% & 0.2s \\
+FIFO & 101\% & 0.2s \\
+CPM & 99\% & 0.2s \\
+MCTS & 92\% & 31s \\
+Random & 12\% & 0.3s \\
+\bottomrule
+\end{tabular}
+\end{columns}
+
+\vspace{1em}
+\textbf{Key insight:} EDD is 3.9$\times$ slower than optimal on 50 blocks, and the gap \textit{grows with scale}. Heuristics converge on throughput, but the 281\% makespan gap means learned policies have massive headroom.
 \end{frame}
 
 %--------------------------------------------------------------
 % SLIDE: The bad news
 %--------------------------------------------------------------
-\begin{frame}{Result 2: \ldots But Nothing Scales to 200 Blocks}
+\begin{frame}{Result 3: \ldots But Nothing Scales to 200 Blocks}
 
 \begin{columns}[T]
 \column{0.55\textwidth}
@@ -365,23 +412,25 @@ DAgger \textit{exceeds} expert by learning error recovery behaviors the rule-bas
 \begin{tabular}{@{}lcc@{}}
 \toprule
 & \textbf{Small} & \textbf{Medium} \\
-& (50) & (200) \\
+& (50 blocks) & (200 blocks) \\
 \midrule
-Expert & 100\% & \textbf{100\%} \\
-MPC & 104\% & 21\% \\
-GA & 109\% & 11\% \\
-DAgger & \textbf{118\%} & {\color{danger}0\%} \\
+Expert & 50 blocks & \textbf{200 blocks} \\
+MPC & 50 blocks & 74 blocks \\
+\midrule
+\multicolumn{3}{c}{\scriptsize Under stochastic extensions:} \\
+Expert & 50 blocks & \textbf{200 blocks} \\
+MPC & 50 blocks & 70 blocks \\
 \bottomrule
 \end{tabular}
 
 \vspace{1em}
 {\small
 \textbf{Expert advantage} grows with scale:\\
-1.0$\times$ (tiny) $\to$ 4.7$\times$ (medium)
+1.0$\times$ (small) $\to$ 2.7$\times$ (medium, det.) $\to$ 2.9$\times$ (stoch.)
 }
 
 \vspace{0.5em}
-{\small GA: 1000s/episode at medium\\MPC: 240K binary variables\\DAgger: distribution shift}
+{\small GA most fragile ($-13\%$), MPC moderate ($-8\%$)\\Expert most robust ($-4\%$ small, $0\%$ medium)}
 \end{columns}
 
 \vspace{0.3em}
@@ -405,23 +454,18 @@ DAgger & \textbf{118\%} & {\color{danger}0\%} \\
 \begin{tabular}{@{}llcc@{}}
 \toprule
 & & \textbf{Small} & \textbf{Medium} \\
+& & (det / stoch) & (det / stoch) \\
 \midrule
-\multirow{2}{*}{Expert} & Blocks & $50$ & $\mathbf{111 \pm 1}$ \\
-& Thru. & $0.053$ & $\mathbf{0.111}$ \\
+\multirow{2}{*}{Expert} & Blocks & $50 / 50$ & $\mathbf{200 / 200}$ \\
+& Thru. & $0.052 / 0.049$ & $\mathbf{0.100 / 0.100}$ \\
 \midrule
-\multirow{2}{*}{MPC} & Blocks & $50$ & $24 \pm 1$ \\
-& Thru. & $0.055$ & $0.024$ \\
-\midrule
-\multirow{2}{*}{GA} & Blocks & $50$ & $12 \pm 5$ \\
-& Thru. & $0.058$ & $0.012$ \\
-\midrule
-\multirow{2}{*}{DAgger} & Blocks & $50$ & $0 \pm 0$ \\
-& Thru. & $\mathbf{0.062}$ & $0.000$ \\
+\multirow{2}{*}{MPC} & Blocks & $50 / 50$ & $74 / 70$ \\
+& Thru. & $0.055 / 0.049$ & $0.037 / 0.035$ \\
 \bottomrule
 \end{tabular}
 
 \vspace{0.5em}
-{\footnotesize All medium pairs: $p < 0.001$\\Effect sizes: $d > 25$ (huge)}
+{\footnotesize Medium Expert vs MPC: $p = 0.008$, $d \approx 27$\\Stochastic: GA $-13\%$, MPC $-8\%$, Expert $-4\%$ (small)}
 \end{columns}
 \end{frame}
 
@@ -465,6 +509,61 @@ Iter & $\beta$ & Loss & Throughput \\
 \end{columns}
 \end{frame}
 
+%--------------------------------------------------------------
+% SLIDE: Stochastic Simulation Extensions
+%--------------------------------------------------------------
+\begin{frame}{Stochastic Simulation: Bridging the Sim-to-Real Gap}
+
+\begin{columns}[T]
+\column{0.48\textwidth}
+
+\textbf{Five uncertainty sources modeled:}
+
+\vspace{0.5em}
+\begin{tabular}{@{}p{2.1cm}l@{}}
+\toprule
+\textbf{Extension} & \textbf{Distribution} \\
+\midrule
+Congestion & LogNormal($\mu$, 0.1) \\
+Absences & Binomial($N$, 0.05) \\
+Fatigue & $\mathcal{N}$(1, 0.05) \\
+Weather & 4-state Markov \\
+Duration & LogNormal, CV 5--25\% \\
+\bottomrule
+\end{tabular}
+
+\vspace{0.5em}
+{\small Combined per-step modifier:\\
+$\Delta t_{\text{eff}} = \Delta t \times p_{\text{shift}} \times m_{\text{weather}} \times f_{\text{dur}}$}
+
+\column{0.48\textwidth}
+\vspace{0.5em}
+\textbf{Impact on throughput:}
+
+\vspace{0.5em}
+{\small
+\begin{tabular}{@{}lccc@{}}
+\toprule
+& \textbf{Expert} & \textbf{MPC} & \textbf{GA} \\
+\midrule
+Small (det) & 0.053 & 0.055 & 0.059 \\
+Small (stoch) & 0.050 & 0.050 & 0.051 \\
+\textbf{Change} & \textbf{$-4\%$} & \textbf{$-8\%$} & \textbf{$-13\%$} \\
+\midrule
+Med. (det) & 0.100 & 0.037 & --- \\
+Med. (stoch) & 0.100 & 0.035 & --- \\
+\textbf{Change} & \textbf{0\%} & \textbf{$-7\%$} & --- \\
+\bottomrule
+\end{tabular}}
+
+\vspace{0.5em}
+\textbf{Key finding:} GA most fragile ($-13\%$);\\ Expert most robust;
+
+\vspace{0.5em}
+{\color{success}\small All 5 extensions are config-gated,\\seeded for reproducibility (214 tests)}
+\end{columns}
+\end{frame}
+
 %==============================================================
 \section{Takeaways}
 %==============================================================
@@ -495,7 +594,7 @@ Iter & $\beta$ & Loss & Throughput \\
 \textbf{Imitation works\\(at small scale)}
 
 \vspace{0.3em}
-{\small DAgger achieves 118\% of expert by learning error recovery. But it cannot generalize beyond its training distribution.}
+{\small DAgger achieves 97\% on 50 blocks (10-seed), and with encoder gradient flow + masking fixes, reaches \textbf{45\% on 200 blocks} (up from 0\%).}
 
 \column{0.3\textwidth}
 \centering
@@ -524,11 +623,11 @@ Iter & $\beta$ & Loss & Throughput \\
 \vspace{0.3em}
 \begin{itemize}
     \setlength\itemsep{0.4em}
-    \item 118\% $\to$ 0\% scalability cliff
+    \item 97\% $\to$ \textbf{45\%} on 200 blocks (was 0\%)
     \item Entropy collapse (no RL fix found)
-    \item Block assembly calibration ($R^2\! = -0.03$)
-    \item Simplified crane physics
-    \item No weather or disruptions
+    \item Action space explosion (24$\times$200 = 4,800 options)
+    \item {\color{success}\sout{No weather}} {\scriptsize(now 5 stochastic extensions)}
+    \item {\color{success}\sout{No optimality bound}} {\scriptsize(MIP: 281\% gap)}
 \end{itemize}
 
 \column{0.48\textwidth}
@@ -536,11 +635,11 @@ Iter & $\beta$ & Loss & Throughput \\
 \vspace{0.3em}
 \begin{itemize}
     \setlength\itemsep{0.4em}
-    \item \textbf{Attention-based heads} for variable entity counts {\small\color{muted}(implemented, not yet trained)}
-    \item Larger policy networks (512+)
-    \item Per-head adaptive entropy
+    \item \textbf{Hierarchical action decomposition} (equipment $\to$ block, not joint)
+    \item \textbf{Local graph neighborhoods} (crane sees only nearby blocks)
+    \item \textbf{Factored cross-attention} matching (not fixed-size heads)
     \item Transfer learning across ship types
-    \item Digital twin integration
+    \item Real-world validation with production data
 \end{itemize}
 \end{columns}
 \end{frame}
@@ -587,7 +686,7 @@ Iter & $\beta$ & Loss & Throughput \\
 \vspace{2em}
 
 \begin{tabular}{rl}
-\faVial\ Tests & 157 passing \\
+\faVial\ Tests & 214 passing \\
 \faCubes\ Instances & 4 sizes (10--1600 blocks) \\
 \faRobot\ Agents & 6 methods compared \\
 \faFile\ Paper & 36 pages \\

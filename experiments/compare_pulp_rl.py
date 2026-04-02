@@ -355,6 +355,10 @@ def main() -> None:
         "--ppo-checkpoint", type=str, default="data/checkpoints/mac_run/best.pt",
         help="Path to PPO checkpoint",
     )
+    parser.add_argument(
+        "--no-extensions", action="store_true",
+        help="Disable all stochastic simulation extensions (deterministic mode)",
+    )
     args = parser.parse_args()
 
     seed_list = list(range(42, 42 + args.seeds))
@@ -380,6 +384,9 @@ def main() -> None:
         except FileNotFoundError:
             print(f"  [SKIP] Config file not found: {config_path}")
             continue
+
+        if args.no_extensions:
+            cfg.pop("extensions", None)
 
         config_name = os.path.splitext(os.path.basename(config_path))[0]
 

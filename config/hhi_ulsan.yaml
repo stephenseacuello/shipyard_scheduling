@@ -581,3 +581,20 @@ lng_specific:
   insulation_type: "reinforced_polyurethane_foam"
   boil_off_rate: 0.1  # % per day (for context, not simulated)
   cryogenic_testing_hours: 48
+
+# =============================================================================
+# STOCHASTIC SIMULATION EXTENSIONS
+# =============================================================================
+# Five config-gated modules for realistic simulation fidelity:
+#   1. Spatial constraints: route congestion (log-normal), crane-dock reach
+#   2. Labor leveling: binomial absences (5%/worker), understaffing penalty
+#   3. Shift scheduling: overtime (10%), fatigue noise (±5%), weekend slowdown
+#   4. Weather: 4-state Markov chain (clear/cloudy/rain/storm)
+#   5. Duration uncertainty: log-normal task+step noise (CV 5–25% by stage)
+
+extensions:
+  enable_spatial: true
+  enable_shifts: true
+  enable_weather: true
+  labor_leveling: true
+  duration_uncertainty: true

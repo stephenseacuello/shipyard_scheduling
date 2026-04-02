@@ -36,6 +36,15 @@ class CalibrationRecord:
     total_area_m2: float
     total_weld_m: float
     observed_time_hours: float
+    # Extended features for stages with low plate-only R²
+    # Block outfitting: driven by piping/electrical complexity, not plate count
+    outfit_complexity: float = 0.0  # Composite outfitting score (0-1)
+    n_pipe_connections: int = 0     # Number of pipe penetrations
+    n_electrical_runs: int = 0      # Number of cable runs
+    # Pre-erection: driven by grand-block assembly complexity
+    n_blocks_in_grand_block: int = 1  # Blocks composing the grand block
+    alignment_difficulty: float = 0.0  # 0-1 based on curvature/position
+    total_weight_tonnes: float = 0.0   # Total grand block weight
 
 
 class CalibrationDataset:
@@ -189,36 +198,57 @@ class CoefficientFitter:
                 # Not enough data to fit
                 continue
 
-            # Build feature matrix: [n_plates, n_curved, n_stiffened, area, weld]
-            X = np.array([
-                [r.n_plates, r.n_curved, r.n_stiffened, r.total_area_m2, r.total_weld_m]
-                for r in records
-            ])
+            # Build feature matrix — stage-specific for better R²
             y = np.array([r.observed_time_hours for r in records])
 
-            def model(x_data, base, c_plate, c_curved, c_stiff, c_area, c_weld):
-                return (base
-                        + c_plate * x_data[:, 0]
-                        + c_curved * x_data[:, 1]
-                        + c_stiff * x_data[:, 2]
-                        + c_area * x_data[:, 3]
-                        + c_weld * x_data[:, 4])
+            if stage == "BLOCK_OUTFITTING":
+                # Outfitting depends on piping/electrical, not just plate geometry
+                X = np.array([
+                    [r.n_plates, r.n_curved, r.total_area_m2,
+                     r.outfit_complexity, r.n_pipe_connections, r.n_electrical_runs]
+                    for r in records
+                ])
+                feature_names = ["per_plate", "per_curved", "per_area_m2",
+                                 "per_outfit_complexity", "per_pipe", "per_electrical"]
+                p0 = [5.0, 0.1, 0.1, 0.01, 10.0, 0.5, 0.3]
+            elif stage == "PRE_ERECTION":
+                # Pre-erection depends on grand-block assembly complexity
+                X = np.array([
+                    [r.n_plates, r.total_area_m2, r.total_weld_m,
+                     r.n_blocks_in_grand_block, r.alignment_difficulty, r.total_weight_tonnes]
+                    for r in records
+                ])
+                feature_names = ["per_plate", "per_area_m2", "per_weld_m",
+                                 "per_grand_block", "per_alignment", "per_weight_tonne"]
+                p0 = [5.0, 0.1, 0.01, 0.05, 2.0, 5.0, 0.1]
+            else:
+                # Standard plate-count regression for other stages
+                X = np.array([
+                    [r.n_plates, r.n_curved, r.n_stiffened, r.total_area_m2, r.total_weld_m]
+                    for r in records
+                ])
+                feature_names = ["per_plate", "per_curved", "per_stiffened",
+                                 "per_area_m2", "per_weld_m"]
+                p0 = [5.0, 0.2, 0.3, 0.3, 0.01, 0.05]
+
+            n_features = X.shape[1]
+
+            def model(x_data, base, *coeffs):
+                result = np.full(x_data.shape[0], base)
+                for k, c in enumerate(coeffs):
+                    result += c * x_data[:, k]
+                return result
 
             try:
                 popt, _ = curve_fit(
                     model, X, y,
-                    p0=[5.0, 0.2, 0.3, 0.3, 0.01, 0.05],
-                    bounds=(0, np.inf),  # All coefficients >= 0
+                    p0=p0,
+                    bounds=(0, np.inf),
                     maxfev=5000,
                 )
-                fitted[stage] = {
-                    "base_hours": float(popt[0]),
-                    "per_plate": float(popt[1]),
-                    "per_curved": float(popt[2]),
-                    "per_stiffened": float(popt[3]),
-                    "per_area_m2": float(popt[4]),
-                    "per_weld_m": float(popt[5]),
-                }
+                fitted[stage] = {"base_hours": float(popt[0])}
+                for k, name in enumerate(feature_names):
+                    fitted[stage][name] = float(popt[k + 1])
             except Exception:
                 # Fallback 1: Ridge regression (handles multicollinearity)
                 try:
@@ -287,6 +317,13 @@ class CoefficientFitter:
         t += coeffs.get("per_flat", 0.0) * n_flat
         t += coeffs.get("per_area_m2", 0.0) * record.total_area_m2
         t += coeffs.get("per_weld_m", 0.0) * record.total_weld_m
+        # Extended features for outfitting/pre-erection
+        t += coeffs.get("per_outfit_complexity", 0.0) * record.outfit_complexity
+        t += coeffs.get("per_pipe", 0.0) * record.n_pipe_connections
+        t += coeffs.get("per_electrical", 0.0) * record.n_electrical_runs
+        t += coeffs.get("per_grand_block", 0.0) * record.n_blocks_in_grand_block
+        t += coeffs.get("per_alignment", 0.0) * record.alignment_difficulty
+        t += coeffs.get("per_weight_tonne", 0.0) * record.total_weight_tonnes
         return t
 
     def export_coefficients(self, coefficients: Dict[str, Dict[str, float]],
